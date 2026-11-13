@@ -1,0 +1,19 @@
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Generated exports and student data
+students_export.csv
+
+# Build outputs
+dist/
+build/
+coverage/
+
+# System files
+.DS_Store
+cli/.cli_session.json
