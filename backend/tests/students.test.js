@@ -269,5 +269,103 @@ describe('Student CRUD & QR Tokens API', () => {
       expect(resDup.body.message).toContain('already used');
     }
   });
+
+  describe('Bulk Student CSV Import API', () => {
+    it('POST /api/v1/students/import - should reject empty or malformed CSV content', async () => {
+      const res1 = await request(app)
+        .post('/api/v1/students/import')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ csvContent: '' });
+
+      expect(res1.status).toBe(400);
+      expect(res1.body.success).toBe(false);
+
+      const res2 = await request(app)
+        .post('/api/v1/students/import')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ csvContent: 'only_one_header_line_without_rows' });
+
+      expect(res2.status).toBe(400);
+      expect(res2.body.message).toContain('at least one data row');
+    });
+
+    it('POST /api/v1/students/import - should reject CSV with missing required headers', async () => {
+      const badHeaderCsv = `student_roll,guardian_phone\n1,9876543210`;
+      const res = await request(app)
+        .post('/api/v1/students/import')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ csvContent: badHeaderCsv, defaultClassId: sampleClassId });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toContain('mandatory');
+    });
+
+    it('POST /api/v1/students/import - should successfully import valid student CSV rows', async () => {
+      const r1 = Math.floor(10000 + Math.random() * 90000);
+      const r2 = Math.floor(10000 + Math.random() * 90000);
+
+      const validCsv = `name,admissionNumber,rollNumber,gender\n"Kavya Sharma",IMP-ADM-${r1},21,FEMALE\n"Manish Patel",IMP-ADM-${r2},22,MALE`;
+
+      const res = await request(app)
+        .post('/api/v1/students/import')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          csvContent: validCsv,
+          defaultClassId: sampleClassId,
+        });
+
+      expect([200, 201]).toContain(res.status);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.summary.importedCount).toBe(2);
+      expect(res.body.data.summary.failedCount).toBe(0);
+      expect(res.body.data.importedStudents.length).toBe(2);
+      expect(res.body.data.importedStudents[0].admissionNumber).toBe(`IMP-ADM-${r1}`);
+    });
+
+    it('POST /api/v1/students/import - should detect duplicate admission numbers in CSV and existing DB records', async () => {
+      const r3 = Math.floor(10000 + Math.random() * 90000);
+      // Fetch an existing student
+      const existingList = await request(app)
+        .get('/api/v1/students?limit=1')
+        .set('Authorization', `Bearer ${adminToken}`);
+      const existingAdm = existingList.body.data.students[0].admissionNumber;
+
+      const dupCsv = `name,admissionNumber,rollNumber\n"New Student 1",BATCH-DUP-${r3},31\n"Duplicate Batch Student",BATCH-DUP-${r3},32\n"Existing DB Student",${existingAdm},33`;
+
+      const res = await request(app)
+        .post('/api/v1/students/import')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          csvContent: dupCsv,
+          defaultClassId: sampleClassId,
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.summary.importedCount).toBe(1);
+      expect(res.body.data.summary.skippedCount).toBe(2);
+      expect(res.body.data.errors.length).toBe(2);
+      expect(res.body.data.errors.some((e) => e.error.includes('multiple times'))).toBe(true);
+      expect(res.body.data.errors.some((e) => e.error.includes('already exists'))).toBe(true);
+    });
+
+    it('POST /api/v1/students/import - should provide row-level validation errors for invalid values', async () => {
+      const invalidRowCsv = `name,admissionNumber,rollNumber\nA,INVALID#ADM,41`;
+
+      const res = await request(app)
+        .post('/api/v1/students/import')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          csvContent: invalidRowCsv,
+          defaultClassId: sampleClassId,
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.summary.importedCount).toBe(0);
+      expect(res.body.data.summary.failedCount).toBeGreaterThanOrEqual(1);
+      expect(res.body.data.errors[0].row).toBe(2);
+      expect(res.body.data.errors[0].error).toBeDefined();
+    });
+  });
 });
 

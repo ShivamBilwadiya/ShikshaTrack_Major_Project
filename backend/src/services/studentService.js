@@ -290,3 +290,284 @@ export const getPrintableCards = async (schoolId, classId = null) => {
   return cards;
 };
 
+/**
+ * Robust CSV line and field parser handling quotes, escaped quotes, and commas
+ */
+export const parseCsvContent = (csvString) => {
+  if (!csvString || typeof csvString !== 'string' || !csvString.trim()) {
+    const err = new Error('CSV content is empty or contains no valid data rows.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const lines = csvString
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+
+  if (lines.length < 2) {
+    const err = new Error('CSV file must contain a header row and at least one data row.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const parseRow = (line) => {
+    const row = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        row.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    row.push(current.trim());
+    return row;
+  };
+
+  const rawHeaders = parseRow(lines[0]);
+  const headers = rawHeaders.map((h) => h.toLowerCase().replace(/[\s_-]+/g, ''));
+
+  // Validate required headers
+  const hasName = headers.includes('name') || headers.includes('studentname');
+  const hasAdmission =
+    headers.includes('admissionnumber') ||
+    headers.includes('admno') ||
+    headers.includes('admissionno');
+
+  if (!hasName || !hasAdmission) {
+    const err = new Error(
+      'CSV header validation failed: "name" and "admissionNumber" are mandatory columns.'
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseRow(lines[i]);
+    const rowObj = {};
+    headers.forEach((header, idx) => {
+      rowObj[header] = values[idx] || '';
+    });
+    rows.push({ rowNumber: i + 1, data: rowObj });
+  }
+
+  return { headers, rows };
+};
+
+/**
+ * Bulk import students from validated CSV data
+ */
+export const bulkImportStudents = async ({
+  schoolId,
+  csvContent,
+  defaultClassId,
+  actorId,
+}) => {
+  const { rows } = parseCsvContent(csvContent);
+
+  const imported = [];
+  const errors = [];
+  let skippedCount = 0;
+
+  // Pre-fetch all school classes for mapping and validation
+  const schoolClasses = await prisma.class.findMany({
+    where: { schoolId },
+    select: { id: true, name: true, section: true },
+  });
+  const classIdSet = new Set(schoolClasses.map((c) => c.id));
+  const classNameMap = new Map();
+  schoolClasses.forEach((c) => {
+    classNameMap.set(`${c.name.toLowerCase().trim()}-${c.section.toLowerCase().trim()}`, c.id);
+    classNameMap.set(`${c.name.toLowerCase().trim()} ${c.section.toLowerCase().trim()}`, c.id);
+  });
+
+  // Track admission numbers within batch to detect duplicates in CSV
+  const seenBatchAdmissions = new Set();
+
+  // Fetch existing admission numbers in school to detect DB duplicates
+  const existingStudents = await prisma.student.findMany({
+    where: { schoolId },
+    select: { admissionNumber: true },
+  });
+  const existingAdmissionSet = new Set(
+    existingStudents.map((s) => s.admissionNumber.toUpperCase())
+  );
+
+  for (const { rowNumber, data } of rows) {
+    const rawName = data.name || data.studentname || '';
+    const rawAdmission = data.admissionnumber || data.admno || data.admissionno || '';
+    const rawRoll = data.rollnumber || data.rollno || '';
+    const rawGender = data.gender || '';
+    const rawClassId = data.classid || defaultClassId || '';
+    const rawClassName = data.classname || data.class || '';
+    const rawSection = data.section || '';
+    const rawGuardianName = data.guardianname || data.guardian || data.fathername || '';
+    const rawGuardianPhone = data.guardianphone || data.phone || data.mobile || '';
+    const rawDob = data.dateofbirth || data.dob || '';
+
+    // Validate Name
+    if (!rawName || rawName.trim().length < 2) {
+      errors.push({
+        row: rowNumber,
+        admissionNumber: rawAdmission || 'N/A',
+        error: 'Student full name is required and must be at least 2 characters.',
+      });
+      continue;
+    }
+
+    // Validate Admission Number format
+    const trimmedAdm = rawAdmission.trim();
+    if (!trimmedAdm) {
+      errors.push({
+        row: rowNumber,
+        admissionNumber: 'N/A',
+        error: 'Admission number cannot be empty.',
+      });
+      continue;
+    }
+
+    if (!/^[A-Za-z0-9-]+$/.test(trimmedAdm)) {
+      errors.push({
+        row: rowNumber,
+        admissionNumber: trimmedAdm,
+        error: 'Admission number must contain only letters, numbers, and hyphens.',
+      });
+      continue;
+    }
+
+    if (trimmedAdm.length < 3 || trimmedAdm.length > 30) {
+      errors.push({
+        row: rowNumber,
+        admissionNumber: trimmedAdm,
+        error: 'Admission number must be between 3 and 30 characters.',
+      });
+      continue;
+    }
+
+    const cleanAdmission = trimmedAdm.toUpperCase();
+
+    // Check duplicate within incoming CSV batch
+    if (seenBatchAdmissions.has(cleanAdmission)) {
+      skippedCount++;
+      errors.push({
+        row: rowNumber,
+        admissionNumber: cleanAdmission,
+        error: `Duplicate admission number in CSV file: "${cleanAdmission}" appears multiple times.`,
+      });
+      continue;
+    }
+    seenBatchAdmissions.add(cleanAdmission);
+
+    // Check duplicate against existing records in school database
+    if (existingAdmissionSet.has(cleanAdmission)) {
+      skippedCount++;
+      errors.push({
+        row: rowNumber,
+        admissionNumber: cleanAdmission,
+        error: `Admission number "${cleanAdmission}" already exists in this school.`,
+      });
+      continue;
+    }
+
+    // Resolve Class ID
+    let targetClassId = rawClassId;
+    if (!targetClassId && rawClassName) {
+      const lookupKey = rawSection
+        ? `${rawClassName.toLowerCase().trim()}-${rawSection.toLowerCase().trim()}`
+        : rawClassName.toLowerCase().trim();
+      targetClassId = classNameMap.get(lookupKey) || null;
+    }
+
+    if (!targetClassId || !classIdSet.has(targetClassId)) {
+      errors.push({
+        row: rowNumber,
+        admissionNumber: cleanAdmission,
+        error: 'A valid class assignment belonging to this school is required.',
+      });
+      continue;
+    }
+
+    // Generate secure QR token
+    const qrToken = generateSecureQrToken();
+
+    try {
+      const created = await prisma.student.create({
+        data: {
+          name: rawName.trim(),
+          admissionNumber: cleanAdmission,
+          rollNumber: rawRoll ? rawRoll.trim() : null,
+          gender: rawGender ? rawGender.trim().toUpperCase() : null,
+          classId: targetClassId,
+          schoolId,
+          qrToken,
+          guardianName: rawGuardianName ? rawGuardianName.trim() : null,
+          guardianPhone: rawGuardianPhone ? rawGuardianPhone.trim() : null,
+          dateOfBirth:
+            rawDob && !isNaN(new Date(rawDob).getTime()) ? new Date(rawDob) : null,
+          active: true,
+        },
+        include: {
+          class: { select: { id: true, name: true, section: true } },
+        },
+      });
+
+      existingAdmissionSet.add(cleanAdmission);
+      imported.push({
+        id: created.id,
+        name: created.name,
+        admissionNumber: created.admissionNumber,
+        rollNumber: created.rollNumber,
+        class: `${created.class.name}-${created.class.section}`,
+      });
+    } catch (err) {
+      errors.push({
+        row: rowNumber,
+        admissionNumber: cleanAdmission,
+        error: err.message,
+      });
+    }
+  }
+
+  if (imported.length > 0) {
+    await logAudit({
+      actorId,
+      action: 'STUDENTS_BULK_IMPORTED',
+      entityType: 'Student',
+      entityId: schoolId,
+      newValue: {
+        totalRows: rows.length,
+        importedCount: imported.length,
+        skippedCount,
+        failedCount: errors.length - skippedCount,
+      },
+      reason: 'Bulk student roster imported via CSV.',
+    });
+  }
+
+  const failedCount = errors.length;
+
+  return {
+    summary: {
+      totalRows: rows.length,
+      importedCount: imported.length,
+      skippedCount,
+      failedCount,
+    },
+    importedStudents: imported,
+    errors,
+  };
+};
+
+

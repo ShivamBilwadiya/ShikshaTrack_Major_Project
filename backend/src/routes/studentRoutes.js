@@ -13,6 +13,7 @@ router.get('/qr/:token', studentController.getStudentByQr);
 router.get('/:id', studentController.getStudent);
 
 // Student modifications require ADMIN
+router.post('/import', requireRole('ADMIN'), studentController.importStudentsCsv);
 router.post('/', requireRole('ADMIN'), studentController.createStudent);
 router.put('/:id', requireRole('ADMIN'), studentController.updateStudent);
 router.post('/:id/regenerate-qr', requireRole('ADMIN'), studentController.regenerateQr);

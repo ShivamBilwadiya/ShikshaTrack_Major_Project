@@ -188,3 +188,28 @@ export const getPrintableCards = async (req, res, next) => {
     next(err);
   }
 };
+
+export const importStudentsCsv = async (req, res, next) => {
+  try {
+    const { csvContent, defaultClassId } = req.body;
+    if (!csvContent || typeof csvContent !== 'string') {
+      return sendError(res, 'CSV content string is required in request body (csvContent).', 400);
+    }
+
+    const result = await studentService.bulkImportStudents({
+      schoolId: req.user.schoolId,
+      csvContent,
+      defaultClassId,
+      actorId: req.user.id,
+    });
+
+    return sendSuccess(
+      res,
+      `CSV import completed: ${result.summary.importedCount} imported, ${result.summary.skippedCount} skipped, ${result.summary.failedCount} errors.`,
+      result,
+      result.summary.importedCount > 0 ? 201 : 200
+    );
+  } catch (err) {
+    return sendError(res, err.message, err.statusCode || 400);
+  }
+};
