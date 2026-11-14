@@ -5,6 +5,7 @@ import app from '../src/app.js';
 describe('Attendance Analytics Date Range & Filtering API', () => {
   let adminToken;
   let teacherToken;
+  let teacherId;
 
   beforeAll(async () => {
     // 1. Admin login
@@ -18,6 +19,7 @@ describe('Attendance Analytics Date Range & Filtering API', () => {
       .post('/api/v1/auth/login')
       .send({ email: 'ramesh.teacher@shikshatrack.in', password: 'teacher123' });
     teacherToken = teacherRes.body.data.token;
+    teacherId = teacherRes.body.data.user.id;
   });
 
   it('GET /api/v1/analytics/admin - should return default analytics for today when no date range is provided', async () => {
@@ -251,6 +253,162 @@ describe('Attendance Analytics Date Range & Filtering API', () => {
         expect(typeof cls.attendanceRate).toBe('number');
         expect(['HIGH', 'MODERATE', 'LOW']).toContain(cls.performanceTier);
       }
+    });
+  });
+
+  describe('Advanced Teacher Workload & Performance Analytics API', () => {
+    it('GET /api/v1/analytics/teachers - should return school-wide teacher workload metrics for ADMIN', async () => {
+      const res = await request(app)
+        .get('/api/v1/analytics/teachers')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.summary).toBeDefined();
+      expect(typeof res.body.data.summary.totalTeachers).toBe('number');
+      expect(typeof res.body.data.summary.activeTeachers).toBe('number');
+      expect(typeof res.body.data.summary.totalSessionsConducted).toBe('number');
+      expect(typeof res.body.data.summary.averageCompletionRate).toBe('number');
+      expect(Array.isArray(res.body.data.teachers)).toBe(true);
+
+      if (res.body.data.teachers.length > 0) {
+        const t = res.body.data.teachers[0];
+        expect(t.teacherId).toBeDefined();
+        expect(t.name).toBeDefined();
+        expect(t.email).toBeDefined();
+        expect(Array.isArray(t.assignedClasses)).toBe(true);
+        expect(typeof t.totalAssignedStudents).toBe('number');
+        expect(t.sessions).toBeDefined();
+        expect(typeof t.sessions.total).toBe('number');
+        expect(typeof t.completionRate).toBe('number');
+        expect(['HEAVY', 'MODERATE', 'LIGHT']).toContain(t.workloadTier);
+        expect(['EXCELLENT', 'SATISFACTORY', 'ATTENTION_NEEDED', 'NO_SESSIONS']).toContain(t.completionStatus);
+      }
+    });
+
+    it('GET /api/v1/analytics/teachers - should restrict TEACHER to their own workload data (RBAC)', async () => {
+      const res = await request(app)
+        .get('/api/v1/analytics/teachers')
+        .set('Authorization', `Bearer ${teacherToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(Array.isArray(res.body.data.teachers)).toBe(true);
+      // Must only contain the logged-in teacher
+      expect(res.body.data.teachers.length).toBe(1);
+      expect(res.body.data.teachers[0].teacherId).toBe(teacherId);
+    });
+
+    it('GET /api/v1/analytics/teachers - should return 403 when TEACHER queries another teacherId', async () => {
+      const otherTeacherId = '00000000-0000-0000-0000-000000000001';
+      const res = await request(app)
+        .get(`/api/v1/analytics/teachers?teacherId=${otherTeacherId}`)
+        .set('Authorization', `Bearer ${teacherToken}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toContain('Access denied');
+    });
+
+    it('GET /api/v1/analytics/teachers - should validate date range parameters', async () => {
+      // Inverted range
+      const invertedRes = await request(app)
+        .get('/api/v1/analytics/teachers?startDate=2026-12-01&endDate=2026-11-01')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(invertedRes.status).toBe(400);
+      expect(invertedRes.body.success).toBe(false);
+      expect(invertedRes.body.message).toContain('End date cannot be before start date');
+
+      // Invalid date format
+      const invalidRes = await request(app)
+        .get('/api/v1/analytics/teachers?startDate=invalid-date')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(invalidRes.status).toBe(400);
+      expect(invalidRes.body.success).toBe(false);
+      expect(invalidRes.body.message).toContain('Invalid start date format');
+    });
+
+    it('GET /api/v1/analytics/teachers - should support search and pagination', async () => {
+      const res = await request(app)
+        .get('/api/v1/analytics/teachers?page=1&limit=1&search=Ramesh')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.pagination).toBeDefined();
+      expect(res.body.data.pagination.page).toBe(1);
+      expect(res.body.data.pagination.limit).toBe(1);
+      expect(res.body.data.teachers.length).toBeLessThanOrEqual(1);
+      if (res.body.data.teachers.length > 0) {
+        expect(res.body.data.teachers[0].name).toContain('Ramesh');
+      }
+    });
+
+    it('GET /api/v1/analytics/teachers/:id - should return detailed metrics and trends for teacher', async () => {
+      const res = await request(app)
+        .get(`/api/v1/analytics/teachers/${teacherId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.teacher.id).toBe(teacherId);
+      expect(res.body.data.workload).toBeDefined();
+      expect(typeof res.body.data.workload.totalAssignedStudents).toBe('number');
+      expect(res.body.data.metrics).toBeDefined();
+      expect(typeof res.body.data.metrics.completionRate).toBe('number');
+      expect(Array.isArray(res.body.data.assignedClasses)).toBe(true);
+      expect(Array.isArray(res.body.data.incompleteSessions)).toBe(true);
+      expect(Array.isArray(res.body.data.weeklyTrends)).toBe(true);
+      expect(Array.isArray(res.body.data.monthlyTrends)).toBe(true);
+      expect(Array.isArray(res.body.data.recommendations)).toBe(true);
+    });
+
+    it('GET /api/v1/analytics/teachers/:id - should permit TEACHER to view their own detailed analytics', async () => {
+      const res = await request(app)
+        .get(`/api/v1/analytics/teachers/${teacherId}`)
+        .set('Authorization', `Bearer ${teacherToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.teacher.id).toBe(teacherId);
+    });
+
+    it('GET /api/v1/analytics/teachers/:id - should reject TEACHER trying to view another teacher (403)', async () => {
+      const otherTeacherId = '00000000-0000-0000-0000-000000000002';
+      const res = await request(app)
+        .get(`/api/v1/analytics/teachers/${otherTeacherId}`)
+        .set('Authorization', `Bearer ${teacherToken}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toContain('Access denied');
+    });
+
+    it('GET /api/v1/analytics/teachers/:id - should return 404 for non-existent teacher ID', async () => {
+      const nonExistent = '00000000-0000-0000-0000-000000000099';
+      const res = await request(app)
+        .get(`/api/v1/analytics/teachers/${nonExistent}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toContain('Teacher not found');
+    });
+
+    it('GET /api/v1/analytics/teachers/activity/trends - should return weekly and monthly activity trends', async () => {
+      const res = await request(app)
+        .get('/api/v1/analytics/teachers/activity/trends')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.summary).toBeDefined();
+      expect(typeof res.body.data.summary.totalSessions).toBe('number');
+      expect(Array.isArray(res.body.data.weeklyTrends)).toBe(true);
+      expect(Array.isArray(res.body.data.monthlyTrends)).toBe(true);
+      expect(Array.isArray(res.body.data.teacherRankings)).toBe(true);
     });
   });
 });

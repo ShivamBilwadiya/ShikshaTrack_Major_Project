@@ -17,6 +17,7 @@ import {
 
 export default function TeacherDashboard() {
   const [data, setData] = useState(null);
+  const [workloadData, setWorkloadData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [downloadSuccess, setDownloadSuccess] = useState('');
@@ -25,8 +26,14 @@ export default function TeacherDashboard() {
   const fetchTeacherData = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/analytics/teacher');
+      const [res, workloadRes] = await Promise.all([
+        api.get('/analytics/teacher'),
+        api.get('/analytics/teachers').catch(() => null),
+      ]);
       setData(res.data);
+      if (workloadRes?.data?.teachers?.[0]) {
+        setWorkloadData(workloadRes.data.teachers[0]);
+      }
       setError('');
     } catch (err) {
       setError(err.message || 'Failed to load teacher dashboard.');
@@ -107,6 +114,67 @@ export default function TeacherDashboard() {
         <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center space-x-2 animate-fade-in">
           <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
           <span>{downloadSuccess}</span>
+        </div>
+      )}
+
+      {/* Workload & Performance Summary */}
+      {workloadData && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Assigned Workload</span>
+            <div className="flex items-center space-x-2 mt-1">
+              <span className="text-xl font-black text-slate-900">{workloadData.assignedClassesCount} Classes</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-100 text-sky-800">
+                {workloadData.workloadTier}
+              </span>
+            </div>
+            <span className="text-[10px] text-slate-500 font-medium block mt-0.5">{workloadData.totalAssignedStudents} Enrolled Students</span>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Conducted Sessions</span>
+            <span className="text-xl font-black text-indigo-700 block mt-1">{workloadData.sessions.total}</span>
+            <span className="text-[10px] text-slate-500 font-medium block mt-0.5">
+              {workloadData.sessions.closed} closed · {workloadData.sessions.open} open
+            </span>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Completion Rate</span>
+            <div className="flex items-center space-x-2 mt-1">
+              <span className="text-xl font-black text-emerald-600">{workloadData.completionRate}%</span>
+              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                workloadData.completionStatus === 'EXCELLENT' ? 'bg-emerald-100 text-emerald-800' : 'bg-indigo-100 text-indigo-800'
+              }`}>
+                {workloadData.completionStatus}
+              </span>
+            </div>
+            <span className="text-[10px] text-slate-500 font-medium block mt-0.5">{workloadData.records.totalMarked} records logged</span>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Roster Audit</span>
+            <div className="flex items-center space-x-1.5 mt-1">
+              {workloadData.sessions.incomplete > 0 ? (
+                <>
+                  <span className="text-xl font-black text-amber-600">{workloadData.sessions.incomplete}</span>
+                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800">
+                    Needs Attention
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="text-xl font-black text-emerald-600">100%</span>
+                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800">
+                    All Complete
+                  </span>
+                </>
+              )}
+            </div>
+            <span className="text-[10px] text-slate-500 font-medium block mt-0.5">
+              {workloadData.sessions.incomplete > 0 ? 'Pending closures/unmarked rosters' : 'No incomplete roll calls'}
+            </span>
+          </div>
         </div>
       )}
 

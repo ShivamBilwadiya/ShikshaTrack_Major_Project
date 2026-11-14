@@ -186,3 +186,154 @@ export const getCohortSummaries = async (req, res, next) => {
     next(err);
   }
 };
+
+/**
+ * Get comprehensive teacher workload, performance, and attendance session completion analytics
+ */
+export const getTeacherWorkloadAnalytics = async (req, res, next) => {
+  try {
+    const {
+      teacherId,
+      classId,
+      status,
+      startDate,
+      endDate,
+      search,
+      page,
+      limit,
+      sortBy,
+      sortOrder,
+    } = req.query;
+
+    // RBAC: Teachers can only view their own performance; Admins can view all
+    let effectiveTeacherId = teacherId;
+    if (req.user.role === 'TEACHER') {
+      if (teacherId && teacherId !== req.user.id) {
+        return sendError(
+          res,
+          'Access denied: Teachers can only view their own workload and performance analytics.',
+          403
+        );
+      }
+      effectiveTeacherId = req.user.id;
+    }
+
+    if (startDate && isNaN(new Date(startDate).getTime())) {
+      return sendError(res, 'Invalid start date format. Expected valid date (YYYY-MM-DD).', 400);
+    }
+
+    if (endDate && isNaN(new Date(endDate).getTime())) {
+      return sendError(res, 'Invalid end date format. Expected valid date (YYYY-MM-DD).', 400);
+    }
+
+    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+      return sendError(res, 'Invalid date range: End date cannot be before start date.', 400);
+    }
+
+    const data = await analyticsService.getTeacherWorkloadAnalytics({
+      schoolId: req.user.schoolId,
+      teacherId: effectiveTeacherId,
+      classId,
+      status,
+      startDate,
+      endDate,
+      search,
+      page: page !== undefined ? parseInt(page, 10) : undefined,
+      limit: limit !== undefined ? parseInt(limit, 10) : undefined,
+      sortBy,
+      sortOrder,
+    });
+
+    return sendSuccess(res, 'Teacher workload and performance analytics retrieved.', data);
+  } catch (err) {
+    if (err.statusCode) {
+      return sendError(res, err.message, err.statusCode);
+    }
+    next(err);
+  }
+};
+
+/**
+ * Get detailed workload, trends, and class completion breakdown for single teacher
+ */
+export const getTeacherDetailAnalytics = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { startDate, endDate } = req.query;
+
+    // RBAC: Teachers can only view their own detailed analytics
+    if (req.user.role === 'TEACHER' && id !== req.user.id) {
+      return sendError(
+        res,
+        'Access denied: Teachers can only view their own detailed analytics.',
+        403
+      );
+    }
+
+    if (startDate && isNaN(new Date(startDate).getTime())) {
+      return sendError(res, 'Invalid start date format. Expected valid date (YYYY-MM-DD).', 400);
+    }
+
+    if (endDate && isNaN(new Date(endDate).getTime())) {
+      return sendError(res, 'Invalid end date format. Expected valid date (YYYY-MM-DD).', 400);
+    }
+
+    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+      return sendError(res, 'Invalid date range: End date cannot be before start date.', 400);
+    }
+
+    const data = await analyticsService.getTeacherDetailAnalytics({
+      schoolId: req.user.schoolId,
+      teacherId: id,
+      startDate,
+      endDate,
+    });
+
+    return sendSuccess(res, 'Detailed teacher performance analytics retrieved.', data);
+  } catch (err) {
+    if (err.statusCode) {
+      return sendError(res, err.message, err.statusCode);
+    }
+    next(err);
+  }
+};
+
+/**
+ * Get periodic teaching activity trends (weekly and monthly)
+ */
+export const getTeacherActivityTrends = async (req, res, next) => {
+  try {
+    const { teacherId, startDate, endDate } = req.query;
+
+    let targetTeacherId = teacherId;
+    if (req.user.role === 'TEACHER') {
+      targetTeacherId = req.user.id;
+    }
+
+    if (startDate && isNaN(new Date(startDate).getTime())) {
+      return sendError(res, 'Invalid start date format. Expected valid date (YYYY-MM-DD).', 400);
+    }
+
+    if (endDate && isNaN(new Date(endDate).getTime())) {
+      return sendError(res, 'Invalid end date format. Expected valid date (YYYY-MM-DD).', 400);
+    }
+
+    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+      return sendError(res, 'Invalid date range: End date cannot be before start date.', 400);
+    }
+
+    const data = await analyticsService.getTeacherActivityTrends({
+      schoolId: req.user.schoolId,
+      teacherId: targetTeacherId,
+      startDate,
+      endDate,
+    });
+
+    return sendSuccess(res, 'Teacher activity trends retrieved successfully.', data);
+  } catch (err) {
+    if (err.statusCode) {
+      return sendError(res, err.message, err.statusCode);
+    }
+    next(err);
+  }
+};

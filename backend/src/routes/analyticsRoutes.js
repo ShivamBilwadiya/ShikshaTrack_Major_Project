@@ -17,4 +17,9 @@ router.get('/students', analyticsController.getStudentInsights);
 router.get('/students/:id', analyticsController.getStudentDetailInsights);
 router.get('/cohorts', analyticsController.getCohortSummaries);
 
+// Advanced Teacher Performance and Workload Analytics
+router.get('/teachers', analyticsController.getTeacherWorkloadAnalytics);
+router.get('/teachers/activity/trends', analyticsController.getTeacherActivityTrends);
+router.get('/teachers/:id', analyticsController.getTeacherDetailAnalytics);
+
 export default router;

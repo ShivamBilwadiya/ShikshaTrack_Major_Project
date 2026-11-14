@@ -962,4 +962,841 @@ export const getCohortSummaries = async ({ schoolId, startDate, endDate, thresho
   };
 };
 
+const getWeekIdentifier = (date) => {
+  const d = new Date(date);
+  const target = new Date(d.valueOf());
+  const dayNr = (d.getDay() + 6) % 7;
+  target.setDate(target.getDate() - dayNr + 3);
+  const firstThursday = target.valueOf();
+  target.setMonth(0, 1);
+  if (target.getDay() !== 4) {
+    target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
+  }
+  const weekNumber = 1 + Math.ceil((firstThursday - target) / 604800000);
+  return `${d.getFullYear()}-W${String(weekNumber).padStart(2, '0')}`;
+};
+
+const getMonthIdentifier = (date) => {
+  const d = new Date(date);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+
+const getMonthDisplayLabel = (monthKey) => {
+  const [year, month] = monthKey.split('-');
+  const date = new Date(parseInt(year, 10), parseInt(month, 10) - 1, 1);
+  return date.toLocaleString('default', { month: 'short', year: 'numeric' });
+};
+
+/**
+ * Get comprehensive teacher workload and performance analytics
+ */
+export const getTeacherWorkloadAnalytics = async ({
+  schoolId,
+  teacherId,
+  classId,
+  status,
+  startDate,
+  endDate,
+  search,
+  page,
+  limit,
+  sortBy = 'completionRate',
+  sortOrder = 'desc',
+}) => {
+  const sessionDateWhere = {};
+  if (startDate) {
+    const s = new Date(startDate);
+    s.setHours(0, 0, 0, 0);
+    sessionDateWhere.gte = s;
+  }
+  if (endDate) {
+    const e = new Date(endDate);
+    e.setHours(23, 59, 59, 999);
+    sessionDateWhere.lte = e;
+  }
+
+  const teacherWhere = {
+    schoolId,
+    role: 'TEACHER',
+  };
+
+  if (teacherId) {
+    teacherWhere.id = teacherId;
+  }
+
+  if (status === 'active') {
+    teacherWhere.active = true;
+  } else if (status === 'inactive') {
+    teacherWhere.active = false;
+  }
+
+  if (classId) {
+    teacherWhere.teacherAssignments = {
+      some: { classId },
+    };
+  }
+
+  if (search && search.trim()) {
+    const q = search.trim();
+    teacherWhere.OR = [
+      { name: { contains: q, mode: 'insensitive' } },
+      { email: { contains: q, mode: 'insensitive' } },
+    ];
+  }
+
+  const teachers = await prisma.user.findMany({
+    where: teacherWhere,
+    include: {
+      teacherAssignments: {
+        include: {
+          class: {
+            include: {
+              students: { where: { active: true }, select: { id: true } },
+            },
+          },
+        },
+      },
+      attendanceSessions: {
+        where: {
+          ...(Object.keys(sessionDateWhere).length > 0 ? { sessionDate: sessionDateWhere } : {}),
+          ...(classId ? { classId } : {}),
+        },
+        include: {
+          class: {
+            include: {
+              students: { where: { active: true }, select: { id: true } },
+            },
+          },
+          attendanceRecords: {
+            select: { status: true, studentId: true },
+          },
+        },
+        orderBy: { sessionDate: 'desc' },
+      },
+    },
+    orderBy: { name: 'asc' },
+  });
+
+  let totalSessionsAcrossTeachers = 0;
+  let totalOpenSessionsAcrossTeachers = 0;
+  let totalClosedSessionsAcrossTeachers = 0;
+  let totalRecordsMarkedAcrossTeachers = 0;
+  let totalIncompleteSessionsAcrossTeachers = 0;
+  let teachersWithIncomplete = 0;
+
+  const analyzedTeachers = teachers.map((teacher) => {
+    const assignedClasses = teacher.teacherAssignments.map((ta) => ({
+      assignmentId: ta.id,
+      classId: ta.classId,
+      className: `${ta.class.name}-${ta.class.section}`,
+      academicYear: ta.class.academicYear,
+      isClassTeacher: ta.isClassTeacher,
+      studentCount: ta.class.students.length,
+    }));
+
+    const uniqueStudentIds = new Set();
+    teacher.teacherAssignments.forEach((ta) => {
+      ta.class.students.forEach((s) => uniqueStudentIds.add(s.id));
+    });
+    const totalAssignedStudents = uniqueStudentIds.size;
+
+    const sessions = teacher.attendanceSessions;
+    const totalSessions = sessions.length;
+    let openSessions = 0;
+    let closedSessions = 0;
+    let presentCount = 0;
+    let lateCount = 0;
+    let absentCount = 0;
+    let totalPotentialRecords = 0;
+    let totalMarkedRecords = 0;
+
+    const incompleteSessions = [];
+
+    sessions.forEach((s) => {
+      if (s.status === 'OPEN') openSessions++;
+      else if (s.status === 'CLOSED') closedSessions++;
+
+      let sessionPresent = 0;
+      let sessionLate = 0;
+      let sessionAbsent = 0;
+
+      s.attendanceRecords.forEach((r) => {
+        if (r.status === 'PRESENT') sessionPresent++;
+        else if (r.status === 'LATE') sessionLate++;
+        else if (r.status === 'ABSENT') sessionAbsent++;
+      });
+
+      const sessionMarked = sessionPresent + sessionLate + sessionAbsent;
+      const enrolledCount = s.class.students.length;
+
+      presentCount += sessionPresent;
+      lateCount += sessionLate;
+      absentCount += sessionAbsent;
+      totalMarkedRecords += sessionMarked;
+      totalPotentialRecords += enrolledCount;
+
+      const sessionCompletionRate = enrolledCount > 0
+        ? Math.min(100, Math.round((sessionMarked / enrolledCount) * 1000) / 10)
+        : 100;
+
+      const isIncomplete = s.status === 'OPEN' || sessionMarked < enrolledCount;
+      if (isIncomplete) {
+        incompleteSessions.push({
+          sessionId: s.id,
+          classId: s.classId,
+          className: `${s.class.name}-${s.class.section}`,
+          sessionDate: formatLocalDate(s.sessionDate),
+          status: s.status,
+          enrolledCount,
+          markedCount: sessionMarked,
+          unmarkedCount: Math.max(0, enrolledCount - sessionMarked),
+          completionRate: sessionCompletionRate,
+          notes: s.notes || null,
+        });
+      }
+    });
+
+    const completionRate = totalPotentialRecords > 0
+      ? Math.min(100, Math.round((totalMarkedRecords / totalPotentialRecords) * 1000) / 10)
+      : (totalSessions > 0 ? 100 : 0);
+
+    const attendanceRate = totalMarkedRecords > 0
+      ? Math.round(((presentCount + lateCount) / totalMarkedRecords) * 1000) / 10
+      : 0;
+
+    let workloadTier = 'LIGHT';
+    if (assignedClasses.length >= 3 || totalAssignedStudents >= 60) {
+      workloadTier = 'HEAVY';
+    } else if (assignedClasses.length >= 2 || totalAssignedStudents >= 30) {
+      workloadTier = 'MODERATE';
+    }
+
+    let completionStatus = 'EXCELLENT';
+    if (totalSessions === 0) {
+      completionStatus = 'NO_SESSIONS';
+    } else if (completionRate < 75) {
+      completionStatus = 'ATTENTION_NEEDED';
+    } else if (completionRate < 90) {
+      completionStatus = 'SATISFACTORY';
+    }
+
+    totalSessionsAcrossTeachers += totalSessions;
+    totalOpenSessionsAcrossTeachers += openSessions;
+    totalClosedSessionsAcrossTeachers += closedSessions;
+    totalRecordsMarkedAcrossTeachers += totalMarkedRecords;
+    totalIncompleteSessionsAcrossTeachers += incompleteSessions.length;
+    if (incompleteSessions.length > 0) {
+      teachersWithIncomplete++;
+    }
+
+    return {
+      teacherId: teacher.id,
+      name: teacher.name,
+      email: teacher.email,
+      active: teacher.active,
+      assignedClassesCount: assignedClasses.length,
+      assignedClasses,
+      totalAssignedStudents,
+      sessions: {
+        total: totalSessions,
+        open: openSessions,
+        closed: closedSessions,
+        incomplete: incompleteSessions.length,
+      },
+      records: {
+        totalMarked: totalMarkedRecords,
+        present: presentCount,
+        late: lateCount,
+        absent: absentCount,
+      },
+      completionRate,
+      attendanceRate,
+      workloadTier,
+      completionStatus,
+      incompleteSessions: incompleteSessions.slice(0, 10),
+    };
+  });
+
+  analyzedTeachers.sort((a, b) => {
+    let comparison = 0;
+    if (sortBy === 'name') {
+      comparison = a.name.localeCompare(b.name);
+    } else if (sortBy === 'sessions') {
+      comparison = a.sessions.total - b.sessions.total;
+    } else if (sortBy === 'completionRate') {
+      comparison = a.completionRate - b.completionRate;
+    } else if (sortBy === 'assignedClasses') {
+      comparison = a.assignedClassesCount - b.assignedClassesCount;
+    } else if (sortBy === 'incompleteSessions') {
+      comparison = a.sessions.incomplete - b.sessions.incomplete;
+    } else {
+      comparison = a.completionRate - b.completionRate;
+    }
+    return sortOrder === 'asc' ? comparison : -comparison;
+  });
+
+  const activeTeachersCount = analyzedTeachers.filter((t) => t.active).length;
+  const teachersWithSessions = analyzedTeachers.filter((t) => t.sessions.total > 0);
+  const avgCompletionRate = teachersWithSessions.length > 0
+    ? Math.round((teachersWithSessions.reduce((acc, t) => acc + t.completionRate, 0) / teachersWithSessions.length) * 10) / 10
+    : 0;
+
+  const summary = {
+    totalTeachers: analyzedTeachers.length,
+    activeTeachers: activeTeachersCount,
+    totalSessionsConducted: totalSessionsAcrossTeachers,
+    totalOpenSessions: totalOpenSessionsAcrossTeachers,
+    totalClosedSessions: totalClosedSessionsAcrossTeachers,
+    totalRecordsMarked: totalRecordsMarkedAcrossTeachers,
+    totalIncompleteSessions: totalIncompleteSessionsAcrossTeachers,
+    teachersWithIncompleteSessions: teachersWithIncomplete,
+    averageCompletionRate: avgCompletionRate,
+    dateRange: {
+      startDate: startDate || null,
+      endDate: endDate || null,
+    },
+  };
+
+  if (page !== undefined && limit !== undefined) {
+    const validPage = Math.max(1, page);
+    const validLimit = Math.max(1, limit);
+    const startIndex = (validPage - 1) * validLimit;
+    const paginatedTeachers = analyzedTeachers.slice(startIndex, startIndex + validLimit);
+
+    return {
+      summary,
+      teachers: paginatedTeachers,
+      pagination: {
+        total: analyzedTeachers.length,
+        page: validPage,
+        limit: validLimit,
+        totalPages: Math.ceil(analyzedTeachers.length / validLimit),
+      },
+    };
+  }
+
+  return {
+    summary,
+    teachers: analyzedTeachers,
+  };
+};
+
+/**
+ * Get detailed workload, trends, and class completion breakdown for single teacher
+ */
+export const getTeacherDetailAnalytics = async ({
+  schoolId,
+  teacherId,
+  startDate,
+  endDate,
+}) => {
+  const sessionDateWhere = {};
+  if (startDate) {
+    const s = new Date(startDate);
+    s.setHours(0, 0, 0, 0);
+    sessionDateWhere.gte = s;
+  }
+  if (endDate) {
+    const e = new Date(endDate);
+    e.setHours(23, 59, 59, 999);
+    sessionDateWhere.lte = e;
+  }
+
+  const teacher = await prisma.user.findFirst({
+    where: {
+      id: teacherId,
+      schoolId,
+      role: 'TEACHER',
+    },
+    include: {
+      teacherAssignments: {
+        include: {
+          class: {
+            include: {
+              students: { where: { active: true }, select: { id: true, name: true, admissionNumber: true, rollNumber: true } },
+            },
+          },
+        },
+      },
+      attendanceSessions: {
+        where: {
+          ...(Object.keys(sessionDateWhere).length > 0 ? { sessionDate: sessionDateWhere } : {}),
+        },
+        include: {
+          class: {
+            include: {
+              students: { where: { active: true }, select: { id: true } },
+            },
+          },
+          attendanceRecords: {
+            select: { status: true, studentId: true, markedAt: true },
+          },
+        },
+        orderBy: { sessionDate: 'desc' },
+      },
+    },
+  });
+
+  if (!teacher) {
+    const err = new Error('Teacher not found in this school.');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const uniqueStudents = new Set();
+  const assignedClassDetails = teacher.teacherAssignments.map((ta) => {
+    ta.class.students.forEach((s) => uniqueStudents.add(s.id));
+
+    const classSessions = teacher.attendanceSessions.filter((s) => s.classId === ta.classId);
+    let present = 0;
+    let late = 0;
+    let absent = 0;
+    let openCount = 0;
+    let closedCount = 0;
+    let totalClassMarked = 0;
+    let totalClassPotential = 0;
+    let incompleteClassSessions = 0;
+
+    classSessions.forEach((s) => {
+      if (s.status === 'OPEN') openCount++;
+      else if (s.status === 'CLOSED') closedCount++;
+
+      let sPresent = 0;
+      let sLate = 0;
+      let sAbsent = 0;
+      s.attendanceRecords.forEach((r) => {
+        if (r.status === 'PRESENT') sPresent++;
+        else if (r.status === 'LATE') sLate++;
+        else if (r.status === 'ABSENT') sAbsent++;
+      });
+      const sMarked = sPresent + sLate + sAbsent;
+      const enrolled = s.class.students.length;
+
+      present += sPresent;
+      late += sLate;
+      absent += sAbsent;
+      totalClassMarked += sMarked;
+      totalClassPotential += enrolled;
+
+      if (s.status === 'OPEN' || sMarked < enrolled) {
+        incompleteClassSessions++;
+      }
+    });
+
+    const completionRate = totalClassPotential > 0
+      ? Math.min(100, Math.round((totalClassMarked / totalClassPotential) * 1000) / 10)
+      : (classSessions.length > 0 ? 100 : 0);
+
+    const attendanceRate = totalClassMarked > 0
+      ? Math.round(((present + late) / totalClassMarked) * 1000) / 10
+      : 0;
+
+    return {
+      assignmentId: ta.id,
+      classId: ta.classId,
+      className: `${ta.class.name}-${ta.class.section}`,
+      academicYear: ta.class.academicYear,
+      isClassTeacher: ta.isClassTeacher,
+      enrolledStudents: ta.class.students.length,
+      sessionsCount: classSessions.length,
+      openSessions: openCount,
+      closedSessions: closedCount,
+      incompleteSessions: incompleteClassSessions,
+      records: {
+        totalMarked: totalClassMarked,
+        present,
+        late,
+        absent,
+      },
+      completionRate,
+      attendanceRate,
+    };
+  });
+
+  const incompleteSessions = [];
+  let totalOpen = 0;
+  let totalClosed = 0;
+  let overallPresent = 0;
+  let overallLate = 0;
+  let overallAbsent = 0;
+  let overallPotential = 0;
+  let overallMarked = 0;
+
+  const weeklyMap = new Map();
+  const monthlyMap = new Map();
+
+  teacher.attendanceSessions.forEach((s) => {
+    if (s.status === 'OPEN') totalOpen++;
+    else if (s.status === 'CLOSED') totalClosed++;
+
+    let sPresent = 0;
+    let sLate = 0;
+    let sAbsent = 0;
+    s.attendanceRecords.forEach((r) => {
+      if (r.status === 'PRESENT') sPresent++;
+      else if (r.status === 'LATE') sLate++;
+      else if (r.status === 'ABSENT') sAbsent++;
+    });
+
+    const sMarked = sPresent + sLate + sAbsent;
+    const enrolled = s.class.students.length;
+
+    overallPresent += sPresent;
+    overallLate += sLate;
+    overallAbsent += sAbsent;
+    overallMarked += sMarked;
+    overallPotential += enrolled;
+
+    const sCompletionRate = enrolled > 0
+      ? Math.min(100, Math.round((sMarked / enrolled) * 1000) / 10)
+      : 100;
+
+    const isIncomplete = s.status === 'OPEN' || sMarked < enrolled;
+    if (isIncomplete) {
+      incompleteSessions.push({
+        sessionId: s.id,
+        classId: s.classId,
+        className: `${s.class.name}-${s.class.section}`,
+        sessionDate: formatLocalDate(s.sessionDate),
+        status: s.status,
+        enrolledStudents: enrolled,
+        markedCount: sMarked,
+        unmarkedCount: Math.max(0, enrolled - sMarked),
+        completionRate: sCompletionRate,
+        notes: s.notes || null,
+      });
+    }
+
+    const weekKey = getWeekIdentifier(s.sessionDate);
+    const existingWeek = weeklyMap.get(weekKey) || {
+      week: weekKey,
+      sessionsCount: 0,
+      openSessions: 0,
+      closedSessions: 0,
+      markedRecords: 0,
+      potentialRecords: 0,
+      presentCount: 0,
+    };
+    existingWeek.sessionsCount++;
+    if (s.status === 'OPEN') existingWeek.openSessions++;
+    else existingWeek.closedSessions++;
+    existingWeek.markedRecords += sMarked;
+    existingWeek.potentialRecords += enrolled;
+    existingWeek.presentCount += sPresent + sLate;
+    weeklyMap.set(weekKey, existingWeek);
+
+    const monthKey = getMonthIdentifier(s.sessionDate);
+    const existingMonth = monthlyMap.get(monthKey) || {
+      month: monthKey,
+      label: getMonthDisplayLabel(monthKey),
+      sessionsCount: 0,
+      openSessions: 0,
+      closedSessions: 0,
+      markedRecords: 0,
+      potentialRecords: 0,
+      presentCount: 0,
+    };
+    existingMonth.sessionsCount++;
+    if (s.status === 'OPEN') existingMonth.openSessions++;
+    else existingMonth.closedSessions++;
+    existingMonth.markedRecords += sMarked;
+    existingMonth.potentialRecords += enrolled;
+    existingMonth.presentCount += sPresent + sLate;
+    monthlyMap.set(monthKey, existingMonth);
+  });
+
+  const weeklyTrends = Array.from(weeklyMap.values())
+    .map((w) => ({
+      week: w.week,
+      sessionsCount: w.sessionsCount,
+      openSessions: w.openSessions,
+      closedSessions: w.closedSessions,
+      markedRecords: w.markedRecords,
+      completionRate: w.potentialRecords > 0
+        ? Math.min(100, Math.round((w.markedRecords / w.potentialRecords) * 1000) / 10)
+        : 100,
+      attendanceRate: w.markedRecords > 0
+        ? Math.round((w.presentCount / w.markedRecords) * 1000) / 10
+        : 0,
+    }))
+    .sort((a, b) => a.week.localeCompare(b.week));
+
+  const monthlyTrends = Array.from(monthlyMap.values())
+    .map((m) => ({
+      month: m.month,
+      label: m.label,
+      sessionsCount: m.sessionsCount,
+      openSessions: m.openSessions,
+      closedSessions: m.closedSessions,
+      markedRecords: m.markedRecords,
+      completionRate: m.potentialRecords > 0
+        ? Math.min(100, Math.round((m.markedRecords / m.potentialRecords) * 1000) / 10)
+        : 100,
+      attendanceRate: m.markedRecords > 0
+        ? Math.round((m.presentCount / m.markedRecords) * 1000) / 10
+        : 0,
+    }))
+    .sort((a, b) => a.month.localeCompare(b.month));
+
+  const overallCompletionRate = overallPotential > 0
+    ? Math.min(100, Math.round((overallMarked / overallPotential) * 1000) / 10)
+    : (teacher.attendanceSessions.length > 0 ? 100 : 0);
+
+  const overallAttendanceRate = overallMarked > 0
+    ? Math.round(((overallPresent + overallLate) / overallMarked) * 1000) / 10
+    : 0;
+
+  let workloadTier = 'LIGHT';
+  if (assignedClassDetails.length >= 3 || uniqueStudents.size >= 60) {
+    workloadTier = 'HEAVY';
+  } else if (assignedClassDetails.length >= 2 || uniqueStudents.size >= 30) {
+    workloadTier = 'MODERATE';
+  }
+
+  const recommendations = [];
+  if (assignedClassDetails.length === 0) {
+    recommendations.push({
+      type: 'WARNING',
+      message: 'No classes currently assigned to this teacher. Assign classes via the Teacher Management console.',
+    });
+  } else {
+    recommendations.push({
+      type: 'INFO',
+      message: `Assigned to ${assignedClassDetails.length} classes with a total of ${uniqueStudents.size} unique active students.`,
+    });
+  }
+
+  if (totalOpen > 0) {
+    recommendations.push({
+      type: 'URGENT',
+      message: `${totalOpen} attendance session${totalOpen > 1 ? 's are' : ' is'} currently open. Close active sessions after concluding roll call.`,
+    });
+  }
+
+  if (incompleteSessions.length > 0) {
+    recommendations.push({
+      type: 'WARNING',
+      message: `${incompleteSessions.length} session${incompleteSessions.length > 1 ? 's have' : ' has'} unmarked students or incomplete records.`,
+    });
+  } else if (teacher.attendanceSessions.length > 0) {
+    recommendations.push({
+      type: 'SUCCESS',
+      message: 'Excellent consistency: 100% of conducted attendance sessions have complete rosters marked.',
+    });
+  }
+
+  if (overallCompletionRate >= 90) {
+    recommendations.push({
+      type: 'SUCCESS',
+      message: `High attendance completion rate of ${overallCompletionRate}%. Keep up the punctual routine!`,
+    });
+  } else if (overallCompletionRate > 0 && overallCompletionRate < 75) {
+    recommendations.push({
+      type: 'WARNING',
+      message: `Attendance completion rate (${overallCompletionRate}%) is below the 75% institutional benchmark.`,
+    });
+  }
+
+  return {
+    teacher: {
+      id: teacher.id,
+      name: teacher.name,
+      email: teacher.email,
+      active: teacher.active,
+      createdAt: teacher.createdAt,
+    },
+    workload: {
+      assignedClassesCount: assignedClassDetails.length,
+      totalAssignedStudents: uniqueStudents.size,
+      workloadTier,
+    },
+    metrics: {
+      totalSessions: teacher.attendanceSessions.length,
+      openSessions: totalOpen,
+      closedSessions: totalClosed,
+      incompleteSessionsCount: incompleteSessions.length,
+      totalRecordsMarked: overallMarked,
+      presentCount: overallPresent,
+      lateCount: overallLate,
+      absentCount: overallAbsent,
+      completionRate: overallCompletionRate,
+      attendanceRate: overallAttendanceRate,
+    },
+    assignedClasses: assignedClassDetails,
+    incompleteSessions,
+    weeklyTrends,
+    monthlyTrends,
+    recommendations,
+    dateRange: {
+      startDate: startDate || null,
+      endDate: endDate || null,
+    },
+  };
+};
+
+/**
+ * Get periodic teaching activity trends (weekly and monthly)
+ */
+export const getTeacherActivityTrends = async ({
+  schoolId,
+  teacherId,
+  startDate,
+  endDate,
+}) => {
+  const sessionDateWhere = {};
+  if (startDate) {
+    const s = new Date(startDate);
+    s.setHours(0, 0, 0, 0);
+    sessionDateWhere.gte = s;
+  }
+  if (endDate) {
+    const e = new Date(endDate);
+    e.setHours(23, 59, 59, 999);
+    sessionDateWhere.lte = e;
+  }
+
+  const sessions = await prisma.attendanceSession.findMany({
+    where: {
+      class: { schoolId },
+      ...(teacherId ? { teacherId } : {}),
+      ...(Object.keys(sessionDateWhere).length > 0 ? { sessionDate: sessionDateWhere } : {}),
+    },
+    include: {
+      teacher: { select: { id: true, name: true } },
+      class: {
+        include: {
+          students: { where: { active: true }, select: { id: true } },
+        },
+      },
+      attendanceRecords: {
+        select: { status: true },
+      },
+    },
+    orderBy: { sessionDate: 'asc' },
+  });
+
+  const weeklyMap = new Map();
+  const monthlyMap = new Map();
+  const teacherSessionMap = new Map();
+
+  let totalMarked = 0;
+  let totalPotential = 0;
+  let openCount = 0;
+  let closedCount = 0;
+
+  sessions.forEach((s) => {
+    if (s.status === 'OPEN') openCount++;
+    else if (s.status === 'CLOSED') closedCount++;
+
+    const marked = s.attendanceRecords.length;
+    const enrolled = s.class.students.length;
+    totalMarked += marked;
+    totalPotential += enrolled;
+
+    const weekKey = getWeekIdentifier(s.sessionDate);
+    const existingWeek = weeklyMap.get(weekKey) || {
+      period: weekKey,
+      sessionsCount: 0,
+      openSessions: 0,
+      closedSessions: 0,
+      markedRecords: 0,
+      potentialRecords: 0,
+    };
+    existingWeek.sessionsCount++;
+    if (s.status === 'OPEN') existingWeek.openSessions++;
+    else existingWeek.closedSessions++;
+    existingWeek.markedRecords += marked;
+    existingWeek.potentialRecords += enrolled;
+    weeklyMap.set(weekKey, existingWeek);
+
+    const monthKey = getMonthIdentifier(s.sessionDate);
+    const existingMonth = monthlyMap.get(monthKey) || {
+      month: monthKey,
+      label: getMonthDisplayLabel(monthKey),
+      sessionsCount: 0,
+      openSessions: 0,
+      closedSessions: 0,
+      markedRecords: 0,
+      potentialRecords: 0,
+    };
+    existingMonth.sessionsCount++;
+    if (s.status === 'OPEN') existingMonth.openSessions++;
+    else existingMonth.closedSessions++;
+    existingMonth.markedRecords += marked;
+    existingMonth.potentialRecords += enrolled;
+    monthlyMap.set(monthKey, existingMonth);
+
+    if (!teacherId && s.teacher) {
+      const existingT = teacherSessionMap.get(s.teacher.id) || {
+        teacherId: s.teacher.id,
+        teacherName: s.teacher.name,
+        sessionsCount: 0,
+        markedRecords: 0,
+        potentialRecords: 0,
+      };
+      existingT.sessionsCount++;
+      existingT.markedRecords += marked;
+      existingT.potentialRecords += enrolled;
+      teacherSessionMap.set(s.teacher.id, existingT);
+    }
+  });
+
+  const weeklyTrends = Array.from(weeklyMap.values()).map((w) => ({
+    period: w.period,
+    sessionsCount: w.sessionsCount,
+    openSessions: w.openSessions,
+    closedSessions: w.closedSessions,
+    markedRecords: w.markedRecords,
+    completionRate: w.potentialRecords > 0
+      ? Math.min(100, Math.round((w.markedRecords / w.potentialRecords) * 1000) / 10)
+      : 100,
+  }));
+
+  const monthlyTrends = Array.from(monthlyMap.values()).map((m) => ({
+    month: m.month,
+    label: m.label,
+    sessionsCount: m.sessionsCount,
+    openSessions: m.openSessions,
+    closedSessions: m.closedSessions,
+    markedRecords: m.markedRecords,
+    completionRate: m.potentialRecords > 0
+      ? Math.min(100, Math.round((m.markedRecords / m.potentialRecords) * 1000) / 10)
+      : 100,
+  }));
+
+  const teacherRankings = Array.from(teacherSessionMap.values())
+    .map((t) => ({
+      teacherId: t.teacherId,
+      teacherName: t.teacherName,
+      sessionsCount: t.sessionsCount,
+      markedRecords: t.markedRecords,
+      completionRate: t.potentialRecords > 0
+        ? Math.min(100, Math.round((t.markedRecords / t.potentialRecords) * 1000) / 10)
+        : 100,
+    }))
+    .sort((a, b) => b.sessionsCount - a.sessionsCount);
+
+  const avgCompletionRate = totalPotential > 0
+    ? Math.min(100, Math.round((totalMarked / totalPotential) * 1000) / 10)
+    : (sessions.length > 0 ? 100 : 0);
+
+  return {
+    summary: {
+      totalSessions: sessions.length,
+      openSessions: openCount,
+      closedSessions: closedCount,
+      totalMarkedRecords: totalMarked,
+      averageCompletionRate: avgCompletionRate,
+      dateRange: {
+        startDate: startDate || null,
+        endDate: endDate || null,
+      },
+    },
+    weeklyTrends,
+    monthlyTrends,
+    teacherRankings,
+  };
+};
+
+
 

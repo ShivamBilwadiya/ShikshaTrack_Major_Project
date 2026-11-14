@@ -19,6 +19,10 @@ import {
   CheckCircle2,
   ChevronDown,
   Info,
+  Briefcase,
+  CheckSquare,
+  Activity,
+  UserCheck,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -60,6 +64,18 @@ export default function Analytics() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStudentDetail, setSelectedStudentDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+
+  // Teacher Workload & Performance states
+  const [teacherData, setTeacherData] = useState(null);
+  const [teacherTrends, setTeacherTrends] = useState(null);
+  const [teacherLoading, setTeacherLoading] = useState(true);
+  const [teacherError, setTeacherError] = useState('');
+  const [teacherSearch, setTeacherSearch] = useState('');
+  const [teacherClassFilter, setTeacherClassFilter] = useState('');
+  const [teacherStatusFilter, setTeacherStatusFilter] = useState('ALL');
+  const [teacherSortBy, setTeacherSortBy] = useState('completionRate');
+  const [selectedTeacherDetail, setSelectedTeacherDetail] = useState(null);
+  const [teacherDetailLoading, setTeacherDetailLoading] = useState(false);
 
   // Fetch overview analytics
   const fetchAnalytics = async (start = startDate, end = endDate) => {
@@ -128,6 +144,57 @@ export default function Analytics() {
     }
   };
 
+  // Fetch teacher workload and performance analytics
+  const fetchTeacherAnalytics = async (start = startDate, end = endDate) => {
+    try {
+      setTeacherLoading(true);
+      const params = {
+        sortBy: teacherSortBy,
+        sortOrder: 'desc',
+      };
+      if (teacherStatusFilter !== 'ALL') params.status = teacherStatusFilter;
+      if (teacherClassFilter) params.classId = teacherClassFilter;
+      if (teacherSearch.trim()) params.search = teacherSearch.trim();
+      if (start) params.startDate = start;
+      if (end) params.endDate = end;
+
+      const [workloadRes, trendsRes] = await Promise.all([
+        api.get('/analytics/teachers', { params }),
+        api.get('/analytics/teachers/activity/trends', {
+          params: {
+            startDate: start || undefined,
+            endDate: end || undefined,
+          },
+        }),
+      ]);
+
+      setTeacherData(workloadRes.data);
+      setTeacherTrends(trendsRes.data);
+      setTeacherError('');
+    } catch (err) {
+      setTeacherError(err.message || 'Failed to load teacher workload and performance analytics.');
+    } finally {
+      setTeacherLoading(false);
+    }
+  };
+
+  // Fetch individual teacher details & class completion breakdown
+  const fetchTeacherDetail = async (teacherId) => {
+    try {
+      setTeacherDetailLoading(true);
+      const params = {};
+      if (startDate) params.startDate = startDate;
+      if (endDate) params.endDate = endDate;
+
+      const res = await api.get(`/analytics/teachers/${teacherId}`, { params });
+      setSelectedTeacherDetail(res.data);
+    } catch (err) {
+      alert(err.message || 'Failed to load teacher detailed performance breakdown.');
+    } finally {
+      setTeacherDetailLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchAnalytics();
     fetchClasses();
@@ -136,8 +203,10 @@ export default function Analytics() {
   useEffect(() => {
     if (activeTab === 'insights') {
       fetchStudentInsights();
+    } else if (activeTab === 'teachers') {
+      fetchTeacherAnalytics();
     }
-  }, [activeTab, threshold, statusFilter, selectedClassId]);
+  }, [activeTab, threshold, statusFilter, selectedClassId, teacherStatusFilter, teacherClassFilter, teacherSortBy]);
 
   const handleApplyFilter = (e) => {
     if (e) e.preventDefault();
@@ -149,6 +218,8 @@ export default function Analytics() {
     fetchAnalytics(startDate, endDate);
     if (activeTab === 'insights') {
       fetchStudentInsights();
+    } else if (activeTab === 'teachers') {
+      fetchTeacherAnalytics(startDate, endDate);
     }
   };
 
@@ -160,6 +231,7 @@ export default function Analytics() {
       setEndDate(endStr);
       setRangeError('');
       fetchAnalytics(endStr, endStr);
+      if (activeTab === 'teachers') fetchTeacherAnalytics(endStr, endStr);
     } else {
       const past = new Date(today.getTime() - days * 86400000);
       const startStr = past.toISOString().split('T')[0];
@@ -167,6 +239,7 @@ export default function Analytics() {
       setEndDate(endStr);
       setRangeError('');
       fetchAnalytics(startStr, endStr);
+      if (activeTab === 'teachers') fetchTeacherAnalytics(startStr, endStr);
     }
   };
 
@@ -175,6 +248,7 @@ export default function Analytics() {
     setEndDate('');
     setRangeError('');
     fetchAnalytics('', '');
+    if (activeTab === 'teachers') fetchTeacherAnalytics('', '');
   };
 
   return (
@@ -202,6 +276,16 @@ export default function Analytics() {
             }`}
           >
             Student Performance Insights
+          </button>
+          <button
+            onClick={() => setActiveTab('teachers')}
+            className={`px-3 py-1.5 rounded-lg transition ${
+              activeTab === 'teachers'
+                ? 'bg-white text-sky-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Teacher Workload & Performance
           </button>
           <button
             onClick={() => setActiveTab('overview')}
@@ -658,7 +742,548 @@ export default function Analytics() {
         </div>
       )}
 
-      {/* TAB 2: Overview & Cohort Trends */}
+      {/* TAB 2: Teacher Workload & Performance Analytics */}
+      {activeTab === 'teachers' && (
+        <div className="space-y-6">
+          {teacherLoading ? (
+            <div className="flex flex-col items-center justify-center p-16 rounded-2xl bg-white border border-slate-200">
+              <RefreshCw className="animate-spin text-sky-600 mb-3" size={28} />
+              <p className="text-xs text-slate-500 font-semibold">Loading teacher workload & performance metrics...</p>
+            </div>
+          ) : teacherError ? (
+            <div className="p-5 rounded-2xl bg-red-50 border border-red-200 text-red-700 flex items-start space-x-3">
+              <AlertCircle className="shrink-0 mt-0.5 text-red-600" size={18} />
+              <div>
+                <h3 className="text-sm font-bold">Failed to load teacher analytics</h3>
+                <p className="text-xs mt-1">{teacherError}</p>
+                <button
+                  onClick={() => fetchTeacherAnalytics()}
+                  className="mt-3 px-3 py-1.5 text-xs font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+                >
+                  Retry
+                </button>
+              </div>
+            </div>
+          ) : teacherData && (
+            <>
+              {/* Summary Metrics Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex items-center space-x-3">
+                  <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center shrink-0">
+                    <Users size={20} />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Faculty Members</span>
+                    <span className="text-xl font-black text-slate-900">{teacherData.summary.totalTeachers}</span>
+                    <span className="text-[10px] text-emerald-600 font-semibold block">{teacherData.summary.activeTeachers} Active</span>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex items-center space-x-3">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                    <CheckSquare size={20} />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Sessions Held</span>
+                    <span className="text-xl font-black text-indigo-700">{teacherData.summary.totalSessionsConducted}</span>
+                    <span className="text-[10px] text-slate-500 font-semibold block">
+                      {teacherData.summary.totalClosedSessions} closed · {teacherData.summary.totalOpenSessions} open
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex items-center space-x-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                    <TrendingUp size={20} />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Avg Completion</span>
+                    <span className="text-xl font-black text-emerald-600">{teacherData.summary.averageCompletionRate}%</span>
+                    <span className="text-[10px] text-slate-500 font-semibold block">Roster fill rate</span>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex items-center space-x-3">
+                  <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+                    <Activity size={20} />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Records Marked</span>
+                    <span className="text-xl font-black text-purple-700">{teacherData.summary.totalRecordsMarked}</span>
+                    <span className="text-[10px] text-slate-500 font-semibold block">Headcounts logged</span>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex items-center space-x-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                    teacherData.summary.totalIncompleteSessions > 0 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'
+                  }`}>
+                    {teacherData.summary.totalIncompleteSessions > 0 ? <AlertTriangle size={20} /> : <CheckCircle2 size={20} />}
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Incomplete Sessions</span>
+                    <span className={`text-xl font-black ${
+                      teacherData.summary.totalIncompleteSessions > 0 ? 'text-amber-600' : 'text-emerald-600'
+                    }`}>
+                      {teacherData.summary.totalIncompleteSessions}
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-semibold block">
+                      {teacherData.summary.teachersWithIncompleteSessions} faculty flagged
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Incomplete Sessions Banner */}
+              {teacherData.summary.totalIncompleteSessions > 0 && (
+                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 flex items-center justify-between text-xs">
+                  <div className="flex items-center space-x-2.5">
+                    <AlertTriangle size={18} className="text-amber-600 shrink-0" />
+                    <span>
+                      <strong>Audit Notice:</strong> {teacherData.summary.totalIncompleteSessions} attendance sessions across{' '}
+                      {teacherData.summary.teachersWithIncompleteSessions} teachers are either still open or have unmarked student records.
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setTeacherSortBy('incompleteSessions')}
+                    className="px-3 py-1 bg-amber-600 text-white font-semibold rounded-lg hover:bg-amber-700 transition"
+                  >
+                    View Flagged Teachers
+                  </button>
+                </div>
+              )}
+
+              {/* Filter & Search Bar */}
+              <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2 flex-1">
+                  {/* Search */}
+                  <div className="relative min-w-[200px]">
+                    <Search className="absolute left-3 top-2.5 text-slate-400" size={14} />
+                    <input
+                      type="text"
+                      placeholder="Search faculty name or email..."
+                      value={teacherSearch}
+                      onChange={(e) => setTeacherSearch(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && fetchTeacherAnalytics()}
+                      className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    />
+                  </div>
+
+                  {/* Class Filter */}
+                  <div className="flex items-center space-x-1.5">
+                    <span className="text-[11px] font-semibold text-slate-500">Class:</span>
+                    <select
+                      value={teacherClassFilter}
+                      onChange={(e) => setTeacherClassFilter(e.target.value)}
+                      className="text-xs py-1.5 px-2.5 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    >
+                      <option value="">All Classes</option>
+                      {classes.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name} - {c.section}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Status Filter */}
+                  <div className="flex items-center space-x-1.5">
+                    <span className="text-[11px] font-semibold text-slate-500">Status:</span>
+                    <select
+                      value={teacherStatusFilter}
+                      onChange={(e) => setTeacherStatusFilter(e.target.value)}
+                      className="text-xs py-1.5 px-2.5 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    >
+                      <option value="ALL">All Statuses</option>
+                      <option value="active">Active Only</option>
+                      <option value="inactive">Inactive Only</option>
+                    </select>
+                  </div>
+
+                  {/* Sort By */}
+                  <div className="flex items-center space-x-1.5">
+                    <span className="text-[11px] font-semibold text-slate-500">Sort:</span>
+                    <select
+                      value={teacherSortBy}
+                      onChange={(e) => setTeacherSortBy(e.target.value)}
+                      className="text-xs py-1.5 px-2.5 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    >
+                      <option value="completionRate">Completion Rate</option>
+                      <option value="sessions">Total Sessions</option>
+                      <option value="incompleteSessions">Incomplete Sessions</option>
+                      <option value="assignedClasses">Assigned Classes</option>
+                      <option value="name">Teacher Name</option>
+                    </select>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => fetchTeacherAnalytics()}
+                  className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-semibold transition"
+                >
+                  <RefreshCw size={13} />
+                  <span>Refresh</span>
+                </button>
+              </div>
+
+              {/* Charts Row */}
+              {teacherTrends && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Chart 1: Teacher Completion Rates Comparison */}
+                  <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-900">Faculty Completion Rates</h3>
+                        <p className="text-[11px] text-slate-500">Attendance roster completion rate per teacher (%)</p>
+                      </div>
+                      <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+                        Benchmarked
+                      </span>
+                    </div>
+                    <div className="h-60">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={teacherData.teachers.slice(0, 8).map((t) => ({
+                            name: t.name.split(' ')[0],
+                            completion: t.completionRate,
+                            attendance: t.attendanceRate,
+                          }))}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} />
+                          <YAxis tick={{ fontSize: 10, fill: '#64748b' }} unit="%" domain={[0, 100]} />
+                          <Tooltip formatter={(val) => [`${val}%`]} />
+                          <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '6px' }} />
+                          <Bar dataKey="completion" name="Completion Rate %" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="attendance" name="Attendance Rate %" fill="#10b981" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Chart 2: Weekly Activity Trends */}
+                  <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-900">Teaching Activity Trends</h3>
+                        <p className="text-[11px] text-slate-500">Sessions conducted weekly across cohorts</p>
+                      </div>
+                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                        Weekly Time-series
+                      </span>
+                    </div>
+                    <div className="h-60">
+                      {teacherTrends.weeklyTrends.length === 0 ? (
+                        <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                          No weekly activity trends recorded in this period.
+                        </div>
+                      ) : (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={teacherTrends.weeklyTrends}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                            <XAxis dataKey="period" tick={{ fontSize: 10, fill: '#64748b' }} />
+                            <YAxis tick={{ fontSize: 10, fill: '#64748b' }} />
+                            <Tooltip />
+                            <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '6px' }} />
+                            <Area type="monotone" dataKey="sessionsCount" name="Sessions Held" stroke="#0ea5e9" fill="#e0f2fe" strokeWidth={2} />
+                            <Area type="monotone" dataKey="completionRate" name="Completion Rate %" stroke="#10b981" fill="#d1fae5" strokeWidth={2} />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Faculty Workload & Session Records Table */}
+              <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900">Faculty Workload & Completion Overview</h2>
+                    <p className="text-xs text-slate-500">Class assignments, roll call sessions, and roster completion accuracy</p>
+                  </div>
+                  <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg">
+                    {teacherData.teachers.length} Teachers Listed
+                  </span>
+                </div>
+
+                {teacherData.teachers.length === 0 ? (
+                  <div className="py-12 text-center text-xs text-slate-400">
+                    No teacher records found matching your current filter criteria.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-semibold border-b border-slate-200">
+                        <tr>
+                          <th className="py-3 px-3">Teacher</th>
+                          <th className="py-3 px-3">Workload</th>
+                          <th className="py-3 px-3">Assigned Classes</th>
+                          <th className="py-3 px-3">Sessions Held</th>
+                          <th className="py-3 px-3">Records Marked</th>
+                          <th className="py-3 px-3">Completion Rate</th>
+                          <th className="py-3 px-3">Incomplete</th>
+                          <th className="py-3 px-3 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                        {teacherData.teachers.map((teacher) => (
+                          <tr key={teacher.teacherId} className="hover:bg-slate-50/60 transition">
+                            <td className="py-3 px-3">
+                              <div className="font-semibold text-slate-900">{teacher.name}</div>
+                              <div className="text-[11px] text-slate-400">{teacher.email}</div>
+                            </td>
+                            <td className="py-3 px-3">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
+                                teacher.workloadTier === 'HEAVY'
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : teacher.workloadTier === 'MODERATE'
+                                  ? 'bg-indigo-100 text-indigo-800'
+                                  : 'bg-emerald-100 text-emerald-800'
+                              }`}>
+                                {teacher.workloadTier}
+                              </span>
+                              <div className="text-[10px] text-slate-400 mt-0.5">
+                                {teacher.totalAssignedStudents} active students
+                              </div>
+                            </td>
+                            <td className="py-3 px-3">
+                              <div className="flex flex-wrap gap-1">
+                                {teacher.assignedClasses.length === 0 ? (
+                                  <span className="text-slate-400 italic text-[11px]">None</span>
+                                ) : (
+                                  teacher.assignedClasses.map((ac) => (
+                                    <span
+                                      key={ac.classId}
+                                      className="px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 text-[10px] font-semibold border border-sky-100"
+                                      title={`${ac.studentCount} students`}
+                                    >
+                                      {ac.className}
+                                    </span>
+                                  ))
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-3 px-3">
+                              <div className="font-bold text-slate-900">{teacher.sessions.total}</div>
+                              <div className="text-[10px] text-slate-400">
+                                {teacher.sessions.closed} closed · {teacher.sessions.open} open
+                              </div>
+                            </td>
+                            <td className="py-3 px-3">
+                              <div className="font-bold text-slate-900">{teacher.records.totalMarked}</div>
+                              <div className="text-[10px] text-emerald-600 font-medium">
+                                {teacher.records.present}P · {teacher.records.late}L · {teacher.records.absent}A
+                              </div>
+                            </td>
+                            <td className="py-3 px-3">
+                              <div className="flex items-center space-x-2">
+                                <div className="w-16 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full ${
+                                      teacher.completionRate >= 90
+                                        ? 'bg-emerald-500'
+                                        : teacher.completionRate >= 75
+                                        ? 'bg-indigo-500'
+                                        : 'bg-amber-500'
+                                    }`}
+                                    style={{ width: `${Math.min(100, teacher.completionRate)}%` }}
+                                  />
+                                </div>
+                                <span className="font-bold text-slate-800 text-xs">{teacher.completionRate}%</span>
+                              </div>
+                              <span className={`inline-block mt-0.5 text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                                teacher.completionStatus === 'EXCELLENT'
+                                  ? 'text-emerald-700 bg-emerald-50'
+                                  : teacher.completionStatus === 'SATISFACTORY'
+                                  ? 'text-indigo-700 bg-indigo-50'
+                                  : teacher.completionStatus === 'NO_SESSIONS'
+                                  ? 'text-slate-500 bg-slate-100'
+                                  : 'text-amber-700 bg-amber-50'
+                              }`}>
+                                {teacher.completionStatus}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3">
+                              {teacher.sessions.incomplete > 0 ? (
+                                <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
+                                  <AlertTriangle size={12} />
+                                  <span>{teacher.sessions.incomplete} Flagged</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                                  <CheckCircle2 size={12} />
+                                  <span>Complete</span>
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 text-right">
+                              <button
+                                onClick={() => fetchTeacherDetail(teacher.teacherId)}
+                                className="px-2.5 py-1.5 rounded-lg bg-sky-50 text-sky-700 font-semibold text-xs hover:bg-sky-100 transition shadow-2xs"
+                              >
+                                View Breakdown
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Single Teacher Detail Drilldown Modal */}
+              {selectedTeacherDetail && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-xs p-4 overflow-y-auto animate-fade-in">
+                  <div className="bg-white rounded-3xl max-w-3xl w-full p-6 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto border border-slate-100">
+                    {/* Header */}
+                    <div className="flex items-start justify-between border-b border-slate-100 pb-4">
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <h2 className="text-xl font-bold text-slate-900">{selectedTeacherDetail.teacher.name}</h2>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            selectedTeacherDetail.teacher.active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            {selectedTeacherDetail.teacher.active ? 'Active' : 'Inactive'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5">{selectedTeacherDetail.teacher.email}</p>
+                      </div>
+                      <button
+                        onClick={() => setSelectedTeacherDetail(null)}
+                        className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    {/* Metrics Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center text-xs">
+                      <div className="p-3 rounded-xl bg-slate-50">
+                        <span className="text-[10px] text-slate-400 font-bold block uppercase">Assigned Classes</span>
+                        <strong className="text-base font-black text-slate-800">
+                          {selectedTeacherDetail.workload.assignedClassesCount}
+                        </strong>
+                      </div>
+                      <div className="p-3 rounded-xl bg-sky-50 text-sky-800">
+                        <span className="text-[10px] font-bold block uppercase">Total Students</span>
+                        <strong className="text-base font-black">
+                          {selectedTeacherDetail.workload.totalAssignedStudents}
+                        </strong>
+                      </div>
+                      <div className="p-3 rounded-xl bg-indigo-50 text-indigo-800">
+                        <span className="text-[10px] font-bold block uppercase">Sessions Conducted</span>
+                        <strong className="text-base font-black">
+                          {selectedTeacherDetail.metrics.totalSessions}
+                        </strong>
+                      </div>
+                      <div className="p-3 rounded-xl bg-emerald-50 text-emerald-800">
+                        <span className="text-[10px] font-bold block uppercase">Completion Rate</span>
+                        <strong className="text-base font-black">
+                          {selectedTeacherDetail.metrics.completionRate}%
+                        </strong>
+                      </div>
+                    </div>
+
+                    {/* Assigned Classes Breakdown */}
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900 mb-2">Class-wise Performance & Workload</h3>
+                      <div className="border border-slate-200 rounded-xl overflow-hidden">
+                        <table className="w-full text-xs text-left">
+                          <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-semibold border-b border-slate-200">
+                            <tr>
+                              <th className="py-2.5 px-3">Class</th>
+                              <th className="py-2.5 px-3">Enrolled</th>
+                              <th className="py-2.5 px-3">Sessions</th>
+                              <th className="py-2.5 px-3">Marked</th>
+                              <th className="py-2.5 px-3">Completion</th>
+                              <th className="py-2.5 px-3">Attendance</th>
+                              <th className="py-2.5 px-3">Incomplete</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                            {selectedTeacherDetail.assignedClasses.map((cls) => (
+                              <tr key={cls.classId}>
+                                <td className="py-2 px-3 font-semibold text-slate-900">{cls.className}</td>
+                                <td className="py-2 px-3">{cls.enrolledStudents}</td>
+                                <td className="py-2 px-3">{cls.sessionsCount}</td>
+                                <td className="py-2 px-3">{cls.records.totalMarked}</td>
+                                <td className="py-2 px-3 font-bold text-indigo-600">{cls.completionRate}%</td>
+                                <td className="py-2 px-3 font-bold text-emerald-600">{cls.attendanceRate}%</td>
+                                <td className="py-2 px-3">
+                                  {cls.incompleteSessions > 0 ? (
+                                    <span className="text-amber-700 font-bold">{cls.incompleteSessions} flagged</span>
+                                  ) : (
+                                    <span className="text-emerald-700 font-semibold">0</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Flagged Incomplete Sessions */}
+                    {selectedTeacherDetail.incompleteSessions.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-900 mb-2 flex items-center space-x-2">
+                          <AlertTriangle size={15} className="text-amber-600" />
+                          <span>Flagged Incomplete Sessions ({selectedTeacherDetail.incompleteSessions.length})</span>
+                        </h3>
+                        <div className="space-y-2">
+                          {selectedTeacherDetail.incompleteSessions.map((isess) => (
+                            <div
+                              key={isess.sessionId}
+                              className="p-3 rounded-xl bg-amber-50/60 border border-amber-200/80 flex items-center justify-between text-xs"
+                            >
+                              <div>
+                                <span className="font-bold text-amber-900">{isess.className}</span>
+                                <span className="text-slate-500 text-[11px] ml-2">Date: {isess.sessionDate}</span>
+                                <div className="text-[11px] text-amber-800 mt-0.5">
+                                  Status: <strong className="font-bold">{isess.status}</strong> · {isess.markedCount} of {isess.enrolledStudents} marked ({isess.unmarkedCount} unmarked)
+                                </div>
+                              </div>
+                              <span className="px-2 py-0.5 rounded bg-amber-200 text-amber-900 text-[10px] font-bold">
+                                {isess.completionRate}% Fill
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Recommendations */}
+                    {selectedTeacherDetail.recommendations.length > 0 && (
+                      <div className="space-y-2">
+                        <h3 className="text-sm font-bold text-slate-900">Actionable Feedback & Observations</h3>
+                        {selectedTeacherDetail.recommendations.map((rec, idx) => (
+                          <div
+                            key={idx}
+                            className={`p-3 rounded-xl text-xs flex items-center space-x-2.5 ${
+                              rec.type === 'SUCCESS'
+                                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                : rec.type === 'URGENT'
+                                ? 'bg-rose-50 text-rose-800 border border-rose-200'
+                                : rec.type === 'WARNING'
+                                ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                                : 'bg-sky-50 text-sky-800 border border-sky-200'
+                            }`}
+                          >
+                            <Info size={16} className="shrink-0" />
+                            <span>{rec.message}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* TAB 3: Overview & Cohort Trends */}
       {activeTab === 'overview' && data && (
         <>
           {/* Row 1: Bar Chart (Class Comparison) & Pie Chart (Headcount Distribution) */}
