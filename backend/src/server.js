@@ -1,10 +1,9 @@
 import app from './app.js';
 import { config } from './config/env.js';
 import prisma from './config/db.js';
+import cors from "cors";
 
 const PORT = config.port || 5000;
-const cors = require("cors");
-
 const corsOptions = {
   origin: [
     "http://localhost:5173",
