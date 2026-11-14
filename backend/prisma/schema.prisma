@@ -1,0 +1,177 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  TEACHER
+}
+
+enum SessionStatus {
+  OPEN
+  CLOSED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+}
+
+enum AttendanceMethod {
+  QR
+  MANUAL
+  OFFLINE_SYNC
+}
+
+model School {
+  id           String   @id @default(uuid())
+  name         String
+  code         String   @unique
+  address      String
+  contactEmail String?
+  contactPhone String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  users    User[]
+  classes  Class[]
+  students Student[]
+
+  @@map("schools")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(TEACHER)
+  schoolId     String
+  school       School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  teacherAssignments TeacherAssignment[]
+  attendanceSessions AttendanceSession[]
+  auditLogs          AuditLog[]
+
+  @@map("users")
+}
+
+model Class {
+  id           String   @id @default(uuid())
+  name         String // e.g., "Class 8"
+  section      String // e.g., "A"
+  academicYear String // e.g., "2026-2027"
+  schoolId     String
+  school       School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  students           Student[]
+  teacherAssignments TeacherAssignment[]
+  attendanceSessions AttendanceSession[]
+
+  @@unique([schoolId, name, section, academicYear])
+  @@map("classes")
+}
+
+model TeacherAssignment {
+  id             String   @id @default(uuid())
+  teacherId      String
+  teacher        User     @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  classId        String
+  class          Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  isClassTeacher Boolean  @default(false)
+  assignedAt     DateTime @default(now())
+
+  @@unique([teacherId, classId])
+  @@map("teacher_assignments")
+}
+
+model Student {
+  id              String    @id @default(uuid())
+  name            String
+  admissionNumber String
+  rollNumber      String?
+  classId         String
+  class           Class     @relation(fields: [classId], references: [id], onDelete: Restrict)
+  schoolId        String
+  school          School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  qrToken         String    @unique @default(uuid())
+  dateOfBirth     DateTime?
+  gender          String? // "Male", "Female", "Other"
+  guardianName    String?
+  guardianPhone   String?
+  active          Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  attendanceRecords AttendanceRecord[]
+
+  @@unique([schoolId, admissionNumber])
+  @@index([classId])
+  @@index([qrToken])
+  @@map("students")
+}
+
+model AttendanceSession {
+  id          String        @id @default(uuid())
+  classId     String
+  class       Class         @relation(fields: [classId], references: [id], onDelete: Cascade)
+  teacherId   String
+  teacher     User          @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  sessionDate DateTime      @default(now())
+  status      SessionStatus @default(OPEN)
+  notes       String?
+  createdAt   DateTime      @default(now())
+  closedAt    DateTime?
+
+  attendanceRecords AttendanceRecord[]
+
+  @@index([classId, sessionDate])
+  @@map("attendance_sessions")
+}
+
+model AttendanceRecord {
+  id        String            @id @default(uuid())
+  sessionId String
+  session   AttendanceSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  studentId String
+  student   Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  status    AttendanceStatus
+  method    AttendanceMethod  @default(MANUAL)
+  markedAt  DateTime          @default(now())
+  remarks   String?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@unique([sessionId, studentId])
+  @@index([studentId, markedAt])
+  @@index([status])
+  @@map("attendance_records")
+}
+
+model AuditLog {
+  id            String   @id @default(uuid())
+  actorId       String?
+  actor         User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action        String // e.g. "RECORD_UPDATED", "SESSION_CLOSED", "STUDENT_CREATED"
+  entityType    String // e.g. "AttendanceRecord", "Student", "AttendanceSession"
+  entityId      String
+  previousValue String? // JSON representation
+  newValue      String? // JSON representation
+  reason        String?
+  createdAt     DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@map("audit_logs")
+}
