@@ -73,6 +73,51 @@ describe('Offline Roster & Idempotent Synchronization API', () => {
     expect(res2.body.data.duplicatesCount).toBeGreaterThanOrEqual(1);
   });
 
+  it('POST /api/v1/sync/batch - should resolve conflict and update status when resolveConflict is requested', async () => {
+    const updateEvent = [
+      {
+        eventId: `conflict-resolve-${Date.now()}`,
+        classId: student.classId,
+        studentId: student.id,
+        status: 'LATE',
+        resolveConflict: true,
+        timestamp: new Date().toISOString(),
+      },
+    ];
+
+    const res = await request(app)
+      .post('/api/v1/sync/batch')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ events: updateEvent });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.conflictsResolvedCount).toBe(1);
+    expect(res.body.data.results[0].conflictResolved).toBe(true);
+    expect(res.body.data.results[0].status).toBe('LATE');
+  });
+
+  it('POST /api/v1/sync/batch - should reject invalid attendance status within batch event gracefully', async () => {
+    const invalidEvent = [
+      {
+        eventId: `invalid-status-${Date.now()}`,
+        classId: student.classId,
+        studentId: student.id,
+        status: 'NON_EXISTENT_STATUS',
+      },
+    ];
+
+    const res = await request(app)
+      .post('/api/v1/sync/batch')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ events: invalidEvent });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.failedCount).toBe(1);
+    expect(res.body.data.results[0].error).toContain('Invalid attendance status');
+  });
+
   it('POST /api/v1/sync/batch - should reject malformed sync payload without events array', async () => {
     const res = await request(app)
       .post('/api/v1/sync/batch')

@@ -83,7 +83,10 @@ export const syncBatch = async ({ schoolId, teacherId, events = [] }) => {
   const results = [];
   let syncedCount = 0;
   let duplicatesCount = 0;
+  let conflictsResolvedCount = 0;
   let failedCount = 0;
+
+  const VALID_STATUSES = ['PRESENT', 'ABSENT', 'LATE', 'EXCUSED'];
 
   for (const event of events) {
     const { eventId, sessionId, classId, studentId, qrToken, status = 'PRESENT', timestamp, remarks } = event;
@@ -141,7 +144,18 @@ export const syncBatch = async ({ schoolId, teacherId, events = [] }) => {
         targetSessionId = session.id;
       }
 
-      // 3. Upsert attendance record idempotently
+      // 3. Upsert attendance record idempotently with conflict handling
+      const targetStatus = status ? status.toUpperCase() : 'PRESENT';
+      if (!VALID_STATUSES.includes(targetStatus)) {
+        failedCount++;
+        results.push({
+          eventId,
+          success: false,
+          error: `Invalid attendance status: "${status}". Supported values are: ${VALID_STATUSES.join(', ')}.`,
+        });
+        continue;
+      }
+
       const existing = await prisma.attendanceRecord.findUnique({
         where: {
           sessionId_studentId: {
@@ -152,15 +166,52 @@ export const syncBatch = async ({ schoolId, teacherId, events = [] }) => {
       });
 
       if (existing) {
-        // If already marked via QR or manual, retain existing or update if offline was earlier
+        const isConflicting = existing.status !== targetStatus;
+        const shouldOverwrite = Boolean(event.overwrite || event.resolveConflict || event.forceUpdate);
+        const incomingTime = timestamp ? new Date(timestamp) : new Date();
+        const existingTime = existing.markedAt ? new Date(existing.markedAt) : new Date(0);
+        const isNewer = Boolean(timestamp && incomingTime.getTime() > existingTime.getTime());
+
+        // Conflict handling: if status differs and (overwrite requested OR incoming event has a newer timestamp)
+        if (isConflicting && (shouldOverwrite || isNewer)) {
+          const updatedRecord = await prisma.attendanceRecord.update({
+            where: { id: existing.id },
+            data: {
+              status: targetStatus,
+              method: 'OFFLINE_SYNC',
+              markedAt: incomingTime,
+              remarks: remarks || `Conflict resolved: updated from ${existing.status} to ${targetStatus}`,
+            },
+          });
+
+          conflictsResolvedCount++;
+          results.push({
+            eventId,
+            success: true,
+            isConflict: true,
+            conflictResolved: true,
+            recordId: updatedRecord.id,
+            studentName: student.name,
+            previousStatus: existing.status,
+            status: updatedRecord.status,
+            message: `Conflict resolved: updated status from ${existing.status} to ${targetStatus}.`,
+          });
+          continue;
+        }
+
+        // Otherwise retain existing and flag duplicate/conflict
         duplicatesCount++;
         results.push({
           eventId,
           success: true,
           isDuplicate: true,
+          hasConflict: isConflicting,
           recordId: existing.id,
           studentName: student.name,
-          message: 'Already recorded.',
+          currentStatus: existing.status,
+          message: isConflicting
+            ? `Retained existing status ${existing.status} over conflicting offline status ${targetStatus}.`
+            : 'Already recorded.',
         });
         continue;
       }
@@ -171,7 +222,7 @@ export const syncBatch = async ({ schoolId, teacherId, events = [] }) => {
         data: {
           sessionId: targetSessionId,
           studentId: student.id,
-          status: status || 'PRESENT',
+          status: targetStatus,
           method: 'OFFLINE_SYNC',
           markedAt: markedTime,
           remarks: remarks || `Synced offline event: ${eventId || 'auto'}`,
@@ -187,6 +238,16 @@ export const syncBatch = async ({ schoolId, teacherId, events = [] }) => {
         status: newRecord.status,
       });
     } catch (err) {
+      if (err.code === 'P2002') {
+        duplicatesCount++;
+        results.push({
+          eventId,
+          success: true,
+          isDuplicate: true,
+          message: 'Concurrent duplicate record detected and ignored.',
+        });
+        continue;
+      }
       failedCount++;
       results.push({
         eventId,
@@ -201,7 +262,7 @@ export const syncBatch = async ({ schoolId, teacherId, events = [] }) => {
     action: 'OFFLINE_SYNC_COMPLETED',
     entityType: 'AttendanceSync',
     entityId: teacherId,
-    newValue: { syncedCount, duplicatesCount, failedCount, totalEvents: events.length },
+    newValue: { syncedCount, duplicatesCount, conflictsResolvedCount, failedCount, totalEvents: events.length },
     reason: 'Offline attendance queue synchronized to central database.',
   });
 
@@ -210,6 +271,7 @@ export const syncBatch = async ({ schoolId, teacherId, events = [] }) => {
     totalReceived: events.length,
     syncedCount,
     duplicatesCount,
+    conflictsResolvedCount,
     failedCount,
     results,
   };
