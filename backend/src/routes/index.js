@@ -8,6 +8,7 @@ import reportRoutes from './reportRoutes.js';
 import analyticsRoutes from './analyticsRoutes.js';
 import aiRoutes from './aiRoutes.js';
 import syncRoutes from './syncRoutes.js';
+import notificationRoutes from './notificationRoutes.js';
 
 const router = Router();
 
@@ -31,6 +32,7 @@ router.use('/reports', reportRoutes);
 router.use('/analytics', analyticsRoutes);
 router.use('/ai', aiRoutes);
 router.use('/sync', syncRoutes);
+router.use('/notifications', notificationRoutes);
 
 export default router;
 

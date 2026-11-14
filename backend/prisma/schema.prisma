@@ -1,6 +1,7 @@
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 generator client {
@@ -10,6 +11,13 @@ generator client {
 enum Role {
   ADMIN
   TEACHER
+}
+
+enum NotificationCategory {
+  INFO
+  WARNING
+  URGENT
+  SUCCESS
 }
 
 enum SessionStatus {
@@ -39,9 +47,10 @@ model School {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  users    User[]
-  classes  Class[]
-  students Student[]
+  users         User[]
+  classes       Class[]
+  students      Student[]
+  notifications Notification[]
 
   @@map("schools")
 }
@@ -61,6 +70,7 @@ model User {
   teacherAssignments TeacherAssignment[]
   attendanceSessions AttendanceSession[]
   auditLogs          AuditLog[]
+  notifications      Notification[]
 
   @@map("users")
 }
@@ -174,4 +184,28 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([actorId])
   @@map("audit_logs")
+}
+
+model Notification {
+  id         String               @id @default(uuid())
+  schoolId   String
+  school     School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title      String
+  message    String
+  category   NotificationCategory @default(INFO)
+  type       String               // "LOW_ATTENDANCE", "INCOMPLETE_SESSION", "STUDENT_ABSENCE", "GENERAL_ANNOUNCEMENT", "SYSTEM_ALERT"
+  entityType String?              // "STUDENT", "CLASS", "SESSION", "TEACHER"
+  entityId   String?
+  isRead     Boolean              @default(false)
+  readAt     DateTime?
+  metadata   Json?
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
+
+  @@index([schoolId, userId, isRead])
+  @@index([schoolId, category])
+  @@index([schoolId, createdAt])
+  @@map("notifications")
 }

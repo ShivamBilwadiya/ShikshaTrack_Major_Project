@@ -31,11 +31,15 @@ describe('Attendance Session & QR Scanning API', () => {
     class8AId = cls8A.id;
 
     // 4. Get students from Class 8-A and Class 9-A
-    const studentRes = await request(app)
-      .get('/api/v1/students?limit=100')
+    const student8ARes = await request(app)
+      .get(`/api/v1/students?classId=${class8AId}`)
       .set('Authorization', `Bearer ${adminToken}`);
-    student8A = studentRes.body.data.students.find((s) => s.class.name === 'Class 8' && s.class.section === 'A');
-    student9A = studentRes.body.data.students.find((s) => s.class.name === 'Class 9');
+    student8A = student8ARes.body.data.students[0];
+
+    const allStudentsRes = await request(app)
+      .get('/api/v1/students?limit=500')
+      .set('Authorization', `Bearer ${adminToken}`);
+    student9A = allStudentsRes.body.data.students.find((s) => s.classId !== class8AId) || student8A;
   });
 
   it('POST /api/v1/attendance/sessions/start - should start attendance session', async () => {

@@ -13,6 +13,7 @@ export const config = {
   port: process.env.PORT || 5050,
   nodeEnv: process.env.NODE_ENV || 'development',
   databaseUrl: process.env.DATABASE_URL,
+  directUrl: process.env.DIRECT_URL,
   jwtSecret: process.env.JWT_SECRET || 'shikshatrack_default_secret_key',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',

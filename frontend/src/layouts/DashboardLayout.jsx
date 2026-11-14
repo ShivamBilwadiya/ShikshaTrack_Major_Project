@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useOffline } from '../context/OfflineContext';
+import NotificationCenter from '../components/NotificationCenter';
 import {
   LayoutDashboard,
   Users,
@@ -173,6 +174,9 @@ export default function DashboardLayout() {
 
           {/* Right Status Actions */}
           <div className="flex items-center space-x-3">
+            {/* Notification Center */}
+            <NotificationCenter />
+
             {/* Online / Offline Indicator */}
             <div
               className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${

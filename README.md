@@ -76,7 +76,7 @@ All models are normalized in **Third Normal Form (3NF)**:
 7. `attendance_records`: Individual marked attendances with composite unique constraint `@@unique([sessionId, studentId])`, status (`PRESENT`, `ABSENT`, `LATE`), and method (`QR`, `MANUAL`, `OFFLINE_SYNC`).
 8. `audit_logs`: Administrative modification audit trail recording `actorId`, `previousValue`, `newValue`, and mandatory `reason`.
 
-For complete details, see [docs/database-schema.md](file:///Users/shivrajbissa/ShikshaTrack/docs/database-schema.md), [docs/teacher-management-api.md](file:///Users/shivrajbissa/ShikshaTrack/docs/teacher-management-api.md), [docs/student-attendance-insights.md](file:///Users/shivrajbissa/ShikshaTrack/docs/student-attendance-insights.md), and [docs/teacher-workload-analytics.md](file:///Users/shivrajbissa/ShikshaTrack/docs/teacher-workload-analytics.md).
+For complete details, see [docs/database-schema.md](file:///Users/shivrajbissa/ShikshaTrack/docs/database-schema.md), [docs/teacher-management-api.md](file:///Users/shivrajbissa/ShikshaTrack/docs/teacher-management-api.md), [docs/student-attendance-insights.md](file:///Users/shivrajbissa/ShikshaTrack/docs/student-attendance-insights.md), [docs/teacher-workload-analytics.md](file:///Users/shivrajbissa/ShikshaTrack/docs/teacher-workload-analytics.md), and [docs/school-notifications-and-alerts.md](file:///Users/shivrajbissa/ShikshaTrack/docs/school-notifications-and-alerts.md).
 
 ---
 
