@@ -32,7 +32,7 @@ describe('Attendance Session & QR Scanning API', () => {
 
     // 4. Get students from Class 8-A and Class 9-A
     const studentRes = await request(app)
-      .get('/api/v1/students')
+      .get('/api/v1/students?limit=100')
       .set('Authorization', `Bearer ${adminToken}`);
     student8A = studentRes.body.data.students.find((s) => s.class.name === 'Class 8' && s.class.section === 'A');
     student9A = studentRes.body.data.students.find((s) => s.class.name === 'Class 9');

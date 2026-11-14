@@ -1,11 +1,47 @@
 import prisma from '../config/db.js';
 
-export const getAdminDashboardStats = async (schoolId) => {
-  const today = new Date();
-  const startOfDay = new Date(today);
-  startOfDay.setHours(0, 0, 0, 0);
-  const endOfDay = new Date(today);
-  endOfDay.setHours(23, 59, 59, 999);
+const formatLocalDate = (d) => {
+  const dateObj = d instanceof Date ? d : new Date(d);
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+export const getAdminDashboardStats = async (schoolIdOrOptions, maybeOptions = {}) => {
+  let schoolId;
+  let startDate;
+  let endDate;
+
+  if (typeof schoolIdOrOptions === 'object' && schoolIdOrOptions !== null) {
+    schoolId = schoolIdOrOptions.schoolId;
+    startDate = schoolIdOrOptions.startDate;
+    endDate = schoolIdOrOptions.endDate;
+  } else {
+    schoolId = schoolIdOrOptions;
+    startDate = maybeOptions.startDate;
+    endDate = maybeOptions.endDate;
+  }
+
+  const isCustomRange = Boolean(startDate || endDate);
+
+  let rangeStart;
+  let rangeEnd;
+
+  if (isCustomRange) {
+    rangeStart = startDate ? new Date(startDate) : new Date('2000-01-01');
+    rangeStart.setHours(0, 0, 0, 0);
+
+    rangeEnd = endDate ? new Date(endDate) : new Date();
+    rangeEnd.setHours(23, 59, 59, 999);
+  } else {
+    const today = new Date();
+    rangeStart = new Date(today);
+    rangeStart.setHours(0, 0, 0, 0);
+
+    rangeEnd = new Date(today);
+    rangeEnd.setHours(23, 59, 59, 999);
+  }
 
   // 1. Overall Counts
   const [totalStudents, totalTeachers, totalClasses] = await Promise.all([
@@ -14,68 +50,87 @@ export const getAdminDashboardStats = async (schoolId) => {
     prisma.class.count({ where: { schoolId } }),
   ]);
 
-  // 2. Today's Sessions & Attendance
-  const todaySessions = await prisma.attendanceSession.findMany({
+  // 2. Sessions & Attendance within selected range
+  const sessions = await prisma.attendanceSession.findMany({
     where: {
       class: { schoolId },
-      sessionDate: { gte: startOfDay, lte: endOfDay },
+      sessionDate: { gte: rangeStart, lte: rangeEnd },
     },
     include: {
       class: true,
       attendanceRecords: true,
     },
-  });
-
-  let todayPresent = 0;
-  let todayLate = 0;
-  let todayAbsent = 0;
-
-  todaySessions.forEach((sess) => {
-    sess.attendanceRecords.forEach((rec) => {
-      if (rec.status === 'PRESENT') todayPresent++;
-      else if (rec.status === 'LATE') todayLate++;
-      else if (rec.status === 'ABSENT') todayAbsent++;
-    });
-  });
-
-  const totalMarked = todayPresent + todayLate + todayAbsent;
-  const todayUnmarked = Math.max(0, totalStudents - totalMarked);
-  const todayAttendanceRate = totalStudents > 0 ? Math.round(((todayPresent + todayLate) / totalStudents) * 100) : 0;
-
-  // 3. Class-wise attendance comparison for today
-  const classBreakdown = todaySessions.map((s) => {
-    const p = s.attendanceRecords.filter((r) => r.status === 'PRESENT').length;
-    const l = s.attendanceRecords.filter((r) => r.status === 'LATE').length;
-    const a = s.attendanceRecords.filter((r) => r.status === 'ABSENT').length;
-    return {
-      classId: s.classId,
-      className: `${s.class.name}-${s.class.section}`,
-      present: p,
-      late: l,
-      absent: a,
-      status: s.status,
-      rate: p + l + a > 0 ? Math.round(((p + l) / (p + l + a)) * 100) : 0,
-    };
-  });
-
-  // 4. Last 7 school days trend
-  const sevenDaysAgo = new Date(today.getTime() - 7 * 86400000);
-  sevenDaysAgo.setHours(0, 0, 0, 0);
-
-  const pastSessions = await prisma.attendanceSession.findMany({
-    where: {
-      class: { schoolId },
-      sessionDate: { gte: sevenDaysAgo, lte: endOfDay },
-    },
-    include: {
-      attendanceRecords: true,
-    },
     orderBy: { sessionDate: 'asc' },
   });
 
+  let presentCount = 0;
+  let lateCount = 0;
+  let absentCount = 0;
+
+  sessions.forEach((sess) => {
+    sess.attendanceRecords.forEach((rec) => {
+      if (rec.status === 'PRESENT') presentCount++;
+      else if (rec.status === 'LATE') lateCount++;
+      else if (rec.status === 'ABSENT') absentCount++;
+    });
+  });
+
+  const totalMarked = presentCount + lateCount + absentCount;
+  const unmarkedCount = isCustomRange
+    ? Math.max(0, (totalStudents * Math.max(1, sessions.length)) - totalMarked)
+    : Math.max(0, totalStudents - totalMarked);
+  const attendanceRate = totalMarked > 0 ? Math.round(((presentCount + lateCount) / totalMarked) * 100) : 0;
+
+  // 3. Class-wise attendance comparison across selected range
+  const classMap = new Map();
+  sessions.forEach((s) => {
+    const existing = classMap.get(s.classId) || {
+      classId: s.classId,
+      className: `${s.class.name}-${s.class.section}`,
+      present: 0,
+      late: 0,
+      absent: 0,
+      status: s.status,
+      sessionCount: 0,
+    };
+    existing.sessionCount++;
+    s.attendanceRecords.forEach((r) => {
+      if (r.status === 'PRESENT') existing.present++;
+      else if (r.status === 'LATE') existing.late++;
+      else if (r.status === 'ABSENT') existing.absent++;
+    });
+    classMap.set(s.classId, existing);
+  });
+
+  const classBreakdown = Array.from(classMap.values()).map((c) => {
+    const total = c.present + c.late + c.absent;
+    return {
+      ...c,
+      rate: total > 0 ? Math.round(((c.present + c.late) / total) * 100) : 0,
+    };
+  });
+
+  // 4. Trend across selected range or last 7 days
+  let trendSessions = sessions;
+  if (!isCustomRange) {
+    const sevenDaysAgo = new Date(rangeEnd.getTime() - 7 * 86400000);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+
+    trendSessions = await prisma.attendanceSession.findMany({
+      where: {
+        class: { schoolId },
+        sessionDate: { gte: sevenDaysAgo, lte: rangeEnd },
+      },
+      include: {
+        attendanceRecords: true,
+      },
+      orderBy: { sessionDate: 'asc' },
+    });
+  }
+
   const trendMap = {};
-  pastSessions.forEach((s) => {
-    const dStr = s.sessionDate.toISOString().split('T')[0];
+  trendSessions.forEach((s) => {
+    const dStr = formatLocalDate(s.sessionDate);
     if (!trendMap[dStr]) {
       trendMap[dStr] = { date: dStr, present: 0, late: 0, absent: 0, total: 0 };
     }
@@ -111,11 +166,18 @@ export const getAdminDashboardStats = async (schoolId) => {
       totalStudents,
       totalTeachers,
       totalClasses,
-      todayPresent,
-      todayLate,
-      todayAbsent,
-      todayUnmarked,
-      todayAttendanceRate,
+      todayPresent: presentCount,
+      todayLate: lateCount,
+      todayAbsent: absentCount,
+      todayUnmarked: unmarkedCount,
+      todayAttendanceRate: attendanceRate,
+      dateRange: {
+        startDate: startDate ? startDate.split('T')[0] : formatLocalDate(rangeStart),
+        endDate: endDate ? endDate.split('T')[0] : formatLocalDate(rangeEnd),
+        isCustomRange,
+        totalSessions: sessions.length,
+        totalMarked,
+      },
     },
     classBreakdown,
     trend,
@@ -123,12 +185,27 @@ export const getAdminDashboardStats = async (schoolId) => {
   };
 };
 
-export const getTeacherDashboardStats = async (teacherId, schoolId) => {
-  const today = new Date();
-  const startOfDay = new Date(today);
-  startOfDay.setHours(0, 0, 0, 0);
-  const endOfDay = new Date(today);
-  endOfDay.setHours(23, 59, 59, 999);
+export const getTeacherDashboardStats = async (teacherId, schoolId, options = {}) => {
+  const { startDate, endDate } = options;
+  const isCustomRange = Boolean(startDate || endDate);
+
+  let rangeStart;
+  let rangeEnd;
+
+  if (isCustomRange) {
+    rangeStart = startDate ? new Date(startDate) : new Date('2000-01-01');
+    rangeStart.setHours(0, 0, 0, 0);
+
+    rangeEnd = endDate ? new Date(endDate) : new Date();
+    rangeEnd.setHours(23, 59, 59, 999);
+  } else {
+    const today = new Date();
+    rangeStart = new Date(today);
+    rangeStart.setHours(0, 0, 0, 0);
+
+    rangeEnd = new Date(today);
+    rangeEnd.setHours(23, 59, 59, 999);
+  }
 
   // 1. Get assigned classes
   const assignments = await prisma.teacherAssignment.findMany({
@@ -153,11 +230,11 @@ export const getTeacherDashboardStats = async (teacherId, schoolId) => {
 
   const classIds = assignedClasses.map((c) => c.classId);
 
-  // 2. Today's sessions for this teacher's assigned classes
-  const todaySessions = await prisma.attendanceSession.findMany({
+  // 2. Sessions for this teacher's assigned classes in range
+  const sessions = await prisma.attendanceSession.findMany({
     where: {
       classId: { in: classIds },
-      sessionDate: { gte: startOfDay, lte: endOfDay },
+      sessionDate: { gte: rangeStart, lte: rangeEnd },
     },
     include: {
       class: true,
@@ -166,8 +243,8 @@ export const getTeacherDashboardStats = async (teacherId, schoolId) => {
   });
 
   const sessionStatusList = assignedClasses.map((ac) => {
-    const session = todaySessions.find((s) => s.classId === ac.classId);
-    if (!session) {
+    const matchedSessions = sessions.filter((s) => s.classId === ac.classId);
+    if (matchedSessions.length === 0) {
       return {
         classId: ac.classId,
         className: ac.className,
@@ -180,22 +257,35 @@ export const getTeacherDashboardStats = async (teacherId, schoolId) => {
       };
     }
 
-    const present = session.attendanceRecords.filter((r) => r.status === 'PRESENT').length;
-    const late = session.attendanceRecords.filter((r) => r.status === 'LATE').length;
-    const absent = session.attendanceRecords.filter((r) => r.status === 'ABSENT').length;
+    const latestSession = matchedSessions[matchedSessions.length - 1];
+    let present = 0;
+    let late = 0;
+    let absent = 0;
+    let totalRecords = 0;
 
+    matchedSessions.forEach((sess) => {
+      sess.attendanceRecords.forEach((r) => {
+        if (r.status === 'PRESENT') present++;
+        else if (r.status === 'LATE') late++;
+        else if (r.status === 'ABSENT') absent++;
+        totalRecords++;
+      });
+    });
+
+    const expectedMarked = ac.studentCount * matchedSessions.length;
     return {
       classId: ac.classId,
       className: ac.className,
       studentCount: ac.studentCount,
       hasSession: true,
-      sessionId: session.id,
-      status: session.status,
-      markedCount: session.attendanceRecords.length,
+      sessionId: latestSession.id,
+      status: latestSession.status,
+      sessionCount: matchedSessions.length,
+      markedCount: totalRecords,
       presentCount: present,
       lateCount: late,
       absentCount: absent,
-      attendanceRate: ac.studentCount > 0 ? Math.round(((present + late) / ac.studentCount) * 100) : 0,
+      attendanceRate: expectedMarked > 0 ? Math.round(((present + late) / expectedMarked) * 100) : 0,
     };
   });
 
