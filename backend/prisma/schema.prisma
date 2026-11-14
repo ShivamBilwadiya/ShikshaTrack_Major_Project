@@ -11,6 +11,7 @@ generator client {
 enum Role {
   ADMIN
   TEACHER
+  PARENT
 }
 
 enum NotificationCategory {
@@ -59,6 +60,9 @@ model School {
   feeStructures    FeeStructure[]
   studentFees      StudentFee[]
   feePayments      FeePayment[]
+  parents          Parent[]
+  announcements    SchoolAnnouncement[]
+  communicationMessages CommunicationMessage[]
 
   @@map("schools")
 }
@@ -90,6 +94,11 @@ model User {
   reversedFeePayments FeePayment[]           @relation("FeeReverser")
   approvedDiscounts  FeeDiscount[]           @relation("DiscountApprover")
   approvedReversals  PaymentReversal[]       @relation("ReversalApprover")
+  parentProfile      Parent?
+  authoredAnnouncements SchoolAnnouncement[] @relation("AnnouncementAuthor")
+  sentMessages       CommunicationMessage[]  @relation("MessageSender")
+  receivedMessages   CommunicationMessage[]  @relation("MessageReceiver")
+  readAnnouncements  AnnouncementRead[]
 
   @@map("users")
 }
@@ -112,6 +121,7 @@ model Class {
   studentLeaves      StudentLeave[]
   studentIncidents   StudentIncident[]
   feeStructures      FeeStructure[]
+  announcements      SchoolAnnouncement[]
 
   @@unique([schoolId, name, section, academicYear])
   @@map("classes")
@@ -154,6 +164,8 @@ model Student {
   studentIncidents  StudentIncident[]
   studentFees       StudentFee[]
   feePayments       FeePayment[]
+  parentLinks       ParentStudent[]
+  communicationMessages CommunicationMessage[]
 
   @@unique([schoolId, admissionNumber])
   @@index([classId])
@@ -669,4 +681,153 @@ model PaymentReversal {
 
   @@index([feePaymentId])
   @@map("payment_reversals")
+}
+
+enum GuardianRelationship {
+  FATHER
+  MOTHER
+  GUARDIAN
+  OTHER
+}
+
+enum ParentAccountStatus {
+  ACTIVE
+  INVITED
+  INACTIVE
+}
+
+enum AnnouncementCategory {
+  GENERAL
+  ACADEMIC
+  ATTENDANCE
+  FEES
+  EVENTS
+  URGENT
+}
+
+enum AudienceType {
+  ALL
+  PARENTS
+  TEACHERS
+  CLASS
+}
+
+enum MessageCategory {
+  GENERAL
+  ACADEMIC
+  ATTENDANCE
+  FEES
+  URGENT
+}
+
+model Parent {
+  id             String               @id @default(uuid())
+  schoolId       String
+  school         School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  userId         String               @unique
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guardianName   String
+  relationship   GuardianRelationship @default(GUARDIAN)
+  phone          String
+  alternatePhone String?
+  address        String?
+  occupation     String?
+  idProofNumber  String?
+  status         ParentAccountStatus  @default(ACTIVE)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  students       ParentStudent[]
+
+  @@index([schoolId])
+  @@index([phone])
+  @@map("parents")
+}
+
+model ParentStudent {
+  id               String               @id @default(uuid())
+  parentId         String
+  parent           Parent               @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  studentId        String
+  student          Student              @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  relationship     GuardianRelationship @default(GUARDIAN)
+  isPrimaryContact Boolean              @default(true)
+  canPickup        Boolean              @default(true)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@unique([parentId, studentId])
+  @@index([studentId])
+  @@index([parentId])
+  @@map("parent_students")
+}
+
+model SchoolAnnouncement {
+  id             String               @id @default(uuid())
+  schoolId       String
+  school         School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  title          String
+  content        String
+  category       AnnouncementCategory @default(GENERAL)
+  priority       String               @default("NORMAL") // "LOW", "NORMAL", "HIGH", "URGENT"
+  targetAudience AudienceType         @default(ALL)
+  classId        String?
+  class          Class?               @relation(fields: [classId], references: [id], onDelete: SetNull)
+  authorId       String
+  author         User                 @relation("AnnouncementAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  isPublished    Boolean              @default(true)
+  publishedAt    DateTime             @default(now())
+  scheduledFor   DateTime?
+  attachmentUrl  String?
+  expiresAt      DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  reads          AnnouncementRead[]
+
+  @@index([schoolId, targetAudience])
+  @@index([schoolId, category])
+  @@index([schoolId, classId])
+  @@index([schoolId, isPublished, publishedAt])
+  @@map("school_announcements")
+}
+
+model AnnouncementRead {
+  id             String             @id @default(uuid())
+  announcementId String
+  announcement   SchoolAnnouncement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readAt         DateTime           @default(now())
+
+  @@unique([announcementId, userId])
+  @@index([userId])
+  @@map("announcement_reads")
+}
+
+model CommunicationMessage {
+  id            String          @id @default(uuid())
+  schoolId      String
+  school        School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  threadId      String?
+  senderId      String
+  sender        User            @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId    String
+  receiver      User            @relation("MessageReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  studentId     String?
+  student       Student?        @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  subject       String
+  content       String
+  category      MessageCategory @default(GENERAL)
+  isRead        Boolean         @default(false)
+  readAt        DateTime?
+  attachmentUrl String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([schoolId, senderId])
+  @@index([schoolId, receiverId, isRead])
+  @@index([threadId])
+  @@index([studentId])
+  @@map("communication_messages")
 }

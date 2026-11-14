@@ -22,6 +22,15 @@ export const authenticateToken = async (req, res, next) => {
             class: true,
           },
         },
+        parentProfile: {
+          include: {
+            students: {
+              select: {
+                studentId: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -36,8 +45,10 @@ export const authenticateToken = async (req, res, next) => {
       role: user.role,
       schoolId: user.schoolId,
       school: user.school,
-      assignedClasses: user.teacherAssignments.map((ta) => ta.classId),
-      teacherAssignments: user.teacherAssignments,
+      assignedClasses: user.teacherAssignments ? user.teacherAssignments.map((ta) => ta.classId) : [],
+      teacherAssignments: user.teacherAssignments || [],
+      parentId: user.parentProfile?.id || null,
+      linkedStudentIds: user.parentProfile?.students?.map((s) => s.studentId) || [],
     };
 
     next();

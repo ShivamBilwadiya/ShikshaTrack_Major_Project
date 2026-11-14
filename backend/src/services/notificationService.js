@@ -73,10 +73,9 @@ export const getNotifications = async ({
 }) => {
   const where = { schoolId };
 
-  // Role-based access control:
-  // Teachers only see notifications explicitly assigned to them or school-wide broadcasts (userId: null)
+  // Teachers and parents only see notifications explicitly assigned to them or school-wide broadcasts (userId: null)
   // Admins can see all school notifications, or filter by specific target user
-  if (userRole === 'TEACHER') {
+  if (userRole === 'TEACHER' || userRole === 'PARENT') {
     where.OR = [
       { userId },
       { userId: null },
@@ -191,7 +190,7 @@ export const getNotifications = async ({
 export const getNotificationSummary = async ({ schoolId, userId, userRole }) => {
   const baseWhere = { schoolId };
 
-  if (userRole === 'TEACHER') {
+  if (userRole === 'TEACHER' || userRole === 'PARENT') {
     baseWhere.OR = [
       { userId },
       { userId: null },
@@ -241,9 +240,9 @@ export const markNotificationAsRead = async ({ notificationId, schoolId, userId,
     throw err;
   }
 
-  // RBAC: If teacher, cannot mark another teacher's notification
-  if (userRole === 'TEACHER' && notification.userId && notification.userId !== userId) {
-    const err = new Error('Access denied: You cannot mark another faculty member\'s notification as read.');
+  // RBAC: If teacher or parent, cannot mark another user's notification
+  if ((userRole === 'TEACHER' || userRole === 'PARENT') && notification.userId && notification.userId !== userId) {
+    const err = new Error('Access denied: You cannot mark another member\'s notification as read.');
     err.statusCode = 403;
     throw err;
   }
@@ -266,7 +265,7 @@ export const markAllNotificationsAsRead = async ({ schoolId, userId, userRole, c
     isRead: false,
   };
 
-  if (userRole === 'TEACHER') {
+  if (userRole === 'TEACHER' || userRole === 'PARENT') {
     where.OR = [
       { userId },
       { userId: null },
@@ -307,9 +306,9 @@ export const deleteNotification = async ({ notificationId, schoolId, userId, use
     throw err;
   }
 
-  // RBAC: Teachers can only dismiss their own notifications
-  if (userRole === 'TEACHER' && notification.userId && notification.userId !== userId) {
-    const err = new Error('Access denied: You cannot dismiss another faculty member\'s notification.');
+  // RBAC: Teachers and parents can only dismiss their own notifications
+  if ((userRole === 'TEACHER' || userRole === 'PARENT') && notification.userId && notification.userId !== userId) {
+    const err = new Error('Access denied: You cannot dismiss another member\'s notification.');
     err.statusCode = 403;
     throw err;
   }

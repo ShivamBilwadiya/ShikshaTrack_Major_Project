@@ -28,7 +28,7 @@ export const getNotifications = async (req, res, next) => {
 
     const data = await notificationService.getNotifications({
       schoolId: req.user.schoolId,
-      userId: req.user.role === 'TEACHER' ? req.user.id : req.query.userId,
+      userId: (req.user.role === 'TEACHER' || req.user.role === 'PARENT') ? req.user.id : req.query.userId,
       userRole: req.user.role,
       category,
       status,

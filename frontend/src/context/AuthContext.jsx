@@ -55,6 +55,7 @@ export const AuthProvider = ({ children }) => {
         role: user?.role || null,
         isAdmin: user?.role === 'ADMIN',
         isTeacher: user?.role === 'TEACHER',
+        isParent: user?.role === 'PARENT',
         isAuthenticated: Boolean(token && user),
         loading,
         login,

@@ -29,6 +29,8 @@ import {
   X,
   School,
   Settings as SettingsIcon,
+  MessageSquare,
+  Heart,
 } from 'lucide-react';
 
 export default function DashboardLayout() {
@@ -43,12 +45,21 @@ export default function DashboardLayout() {
     navigate('/login');
   };
 
-  const navItems = isAdmin
+  const navItems = user?.role === 'PARENT'
+    ? [
+        { label: 'Guardian Dashboard', path: '/parent/dashboard', icon: LayoutDashboard },
+        { label: 'School Communication', path: '/parent/communication', icon: MessageSquare },
+        { label: 'Academic Calendar', path: '/calendar', icon: CalendarDays },
+        { label: 'School Timetable', path: '/timetable', icon: CalendarDays },
+      ]
+    : isAdmin
     ? [
         { label: 'Admin Dashboard', path: '/admin/dashboard', icon: LayoutDashboard },
         { label: 'Student Directory', path: '/students', icon: GraduationCap },
         { label: 'Class Management', path: '/classes', icon: Building2 },
         { label: 'Faculty Management', path: '/teachers', icon: Users },
+        { label: 'Parent & Guardians', path: '/parents/manage', icon: Heart },
+        { label: 'School Communication', path: '/parent/communication', icon: MessageSquare },
         { label: 'School Timetable', path: '/timetable', icon: CalendarDays },
         { label: 'Academic Calendar', path: '/calendar', icon: CalendarDays },
         { label: 'Examinations & Marks', path: '/exams', icon: Award },
@@ -75,6 +86,7 @@ export default function DashboardLayout() {
         { label: 'Student Leaves', path: '/leaves', icon: CalendarCheck },
         { label: 'Discipline & Incidents', path: '/incidents', icon: ShieldAlert },
         { label: 'Fee & Billing', path: '/fees', icon: CreditCard },
+        { label: 'School Communication', path: '/parent/communication', icon: MessageSquare },
         { label: 'Class Reports', path: '/reports', icon: BarChart3 },
         { label: 'Attendance Intelligence', path: '/attendance/analytics', icon: TrendingUp },
         { label: 'Offline Sync Center', path: '/sync', icon: CloudOff, badge: pendingCount },

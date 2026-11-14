@@ -30,6 +30,9 @@ import AiInsights from './pages/AiInsights';
 import AiReportGenerator from './pages/AiReportGenerator';
 import OfflineSync from './pages/OfflineSync';
 import Settings from './pages/Settings';
+import ParentDashboard from './pages/ParentDashboard';
+import ParentCommunication from './pages/ParentCommunication';
+import ParentManagement from './pages/ParentManagement';
 
 // Route Guards
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -51,6 +54,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   }
 
   if (allowedRoles && !allowedRoles.includes(role)) {
+    if (role === 'PARENT') return <Navigate to="/parent/dashboard" replace />;
     return <Navigate to={role === 'ADMIN' ? '/admin/dashboard' : '/teacher/dashboard'} replace />;
   }
 
@@ -62,6 +66,7 @@ const HomeRedirect = () => {
   const { isAuthenticated, role, loading } = useAuth();
   if (loading) return null;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (role === 'PARENT') return <Navigate to="/parent/dashboard" replace />;
   return <Navigate to={role === 'ADMIN' ? '/admin/dashboard' : '/teacher/dashboard'} replace />;
 };
 
@@ -140,6 +145,25 @@ export default function App() {
               <Route path="leaves" element={<LeaveManagement />} />
               <Route path="incidents" element={<StudentIncidentManagement />} />
               <Route path="fees" element={<FeeManagement />} />
+
+              {/* Parent Portal & Communication */}
+              <Route
+                path="parent/dashboard"
+                element={
+                  <ProtectedRoute allowedRoles={['PARENT', 'ADMIN']}>
+                    <ParentDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="parent/communication" element={<ParentCommunication />} />
+              <Route
+                path="parents/manage"
+                element={
+                  <ProtectedRoute allowedRoles={['ADMIN']}>
+                    <ParentManagement />
+                  </ProtectedRoute>
+                }
+              />
 
               {/* QR ID Cards Print Sheet */}
               <Route path="qr-cards" element={<QrIdCards />} />

@@ -15,6 +15,8 @@ import examRoutes from './examRoutes.js';
 import leaveRoutes from './leaveRoutes.js';
 import incidentRoutes from './incidentRoutes.js';
 import feeRoutes from './feeRoutes.js';
+import parentRoutes from './parentRoutes.js';
+import communicationRoutes from './communicationRoutes.js';
 
 const router = Router();
 
@@ -45,6 +47,8 @@ router.use('/exams', examRoutes);
 router.use('/leaves', leaveRoutes);
 router.use('/incidents', incidentRoutes);
 router.use('/fees', feeRoutes);
+router.use('/parents', parentRoutes);
+router.use('/communication', communicationRoutes);
 
 export default router;
 
