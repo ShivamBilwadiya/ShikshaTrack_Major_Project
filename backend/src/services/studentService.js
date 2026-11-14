@@ -129,13 +129,16 @@ export const createStudent = async ({
   guardianPhone,
   actorId,
 }) => {
+  const cleanAdmission =
+    typeof admissionNumber === 'string' ? admissionNumber.trim().toUpperCase() : admissionNumber;
+
   // Check admission number uniqueness in school
   const existing = await prisma.student.findFirst({
-    where: { schoolId, admissionNumber: admissionNumber.trim() },
+    where: { schoolId, admissionNumber: cleanAdmission },
   });
 
   if (existing) {
-    throw new Error(`A student with Admission Number '${admissionNumber}' already exists in this school.`);
+    throw new Error(`A student with Admission Number '${cleanAdmission}' already exists in this school.`);
   }
 
   const qrToken = generateSecureQrToken();
@@ -143,7 +146,7 @@ export const createStudent = async ({
   const student = await prisma.student.create({
     data: {
       name: name.trim(),
-      admissionNumber: admissionNumber.trim(),
+      admissionNumber: cleanAdmission,
       rollNumber: rollNumber ? rollNumber.trim() : null,
       classId,
       schoolId,
@@ -183,12 +186,17 @@ export const updateStudent = async (
 ) => {
   const current = await getStudentById(id, schoolId);
 
-  if (admissionNumber && admissionNumber !== current.admissionNumber) {
+  const cleanAdmission =
+    admissionNumber !== undefined && admissionNumber !== null && typeof admissionNumber === 'string'
+      ? admissionNumber.trim().toUpperCase()
+      : undefined;
+
+  if (cleanAdmission && cleanAdmission !== current.admissionNumber) {
     const existing = await prisma.student.findFirst({
-      where: { schoolId, admissionNumber: admissionNumber.trim(), id: { not: id } },
+      where: { schoolId, admissionNumber: cleanAdmission, id: { not: id } },
     });
     if (existing) {
-      throw new Error(`Admission Number '${admissionNumber}' is already used by another student.`);
+      throw new Error(`Admission Number '${cleanAdmission}' is already used by another student.`);
     }
   }
 
@@ -196,7 +204,7 @@ export const updateStudent = async (
     where: { id },
     data: {
       name: name ? name.trim() : current.name,
-      admissionNumber: admissionNumber ? admissionNumber.trim() : current.admissionNumber,
+      admissionNumber: cleanAdmission !== undefined ? cleanAdmission : current.admissionNumber,
       rollNumber: rollNumber !== undefined ? rollNumber : current.rollNumber,
       classId: classId || current.classId,
       dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : current.dateOfBirth,

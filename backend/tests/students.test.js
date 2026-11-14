@@ -118,5 +118,156 @@ describe('Student CRUD & QR Tokens API', () => {
     expect(res.body.success).toBe(false);
     expect(res.body.message).toContain('Gender must be one of');
   });
+
+  it('POST /api/v1/students - should trim whitespace and normalize admission numbers to uppercase', async () => {
+    const randomNum = Math.floor(10000 + Math.random() * 90000);
+    const newStudent = {
+      name: `Normalized Student ${randomNum}`,
+      admissionNumber: `   adm-norm-${randomNum}   `,
+      classId: sampleClassId,
+    };
+
+    const res = await request(app)
+      .post('/api/v1/students')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(newStudent);
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.admissionNumber).toBe(`ADM-NORM-${randomNum}`);
+  });
+
+  it('POST /api/v1/students - should reject empty admission numbers', async () => {
+    const emptyStudent = {
+      name: 'Empty Admission Student',
+      admissionNumber: '',
+      classId: sampleClassId,
+    };
+
+    const res1 = await request(app)
+      .post('/api/v1/students')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(emptyStudent);
+
+    expect(res1.status).toBe(400);
+    expect(res1.body.success).toBe(false);
+    expect(res1.body.message).toContain('Admission number');
+
+    const whitespaceStudent = {
+      name: 'Whitespace Admission Student',
+      admissionNumber: '     ',
+      classId: sampleClassId,
+    };
+
+    const res2 = await request(app)
+      .post('/api/v1/students')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(whitespaceStudent);
+
+    expect(res2.status).toBe(400);
+    expect(res2.body.success).toBe(false);
+    expect(res2.body.message).toContain('Admission number');
+  });
+
+  it('POST /api/v1/students - should allow only letters, numbers, and hyphens in admission numbers', async () => {
+    const underscoreStudent = {
+      name: 'Underscore Student',
+      admissionNumber: 'ADM_2026_0099',
+      classId: sampleClassId,
+    };
+
+    const res1 = await request(app)
+      .post('/api/v1/students')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(underscoreStudent);
+
+    expect(res1.status).toBe(400);
+    expect(res1.body.success).toBe(false);
+    expect(res1.body.message).toContain('only letters, numbers, and hyphens');
+
+    const spaceStudent = {
+      name: 'Space Student',
+      admissionNumber: 'ADM 2026 0099',
+      classId: sampleClassId,
+    };
+
+    const res2 = await request(app)
+      .post('/api/v1/students')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(spaceStudent);
+
+    expect(res2.status).toBe(400);
+    expect(res2.body.success).toBe(false);
+    expect(res2.body.message).toContain('only letters, numbers, and hyphens');
+
+    const symbolStudent = {
+      name: 'Symbol Student',
+      admissionNumber: 'ADM#2026@0099',
+      classId: sampleClassId,
+    };
+
+    const res3 = await request(app)
+      .post('/api/v1/students')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(symbolStudent);
+
+    expect(res3.status).toBe(400);
+    expect(res3.body.success).toBe(false);
+    expect(res3.body.message).toContain('only letters, numbers, and hyphens');
+  });
+
+  it('PUT /api/v1/students/:id - should normalize and validate admission numbers during student updates', async () => {
+    // 1. Fetch a student to update
+    const listRes = await request(app)
+      .get('/api/v1/students?limit=5')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const targetStudent = listRes.body.data.students[0];
+    const otherStudent = listRes.body.data.students[1];
+
+    const randomNum = Math.floor(10000 + Math.random() * 90000);
+    const updatedAdm = `   upd-adm-${randomNum}   `;
+
+    // 2. Successful update with trimming and uppercase normalization
+    const resSuccess = await request(app)
+      .put(`/api/v1/students/${targetStudent.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ admissionNumber: updatedAdm });
+
+    expect(resSuccess.status).toBe(200);
+    expect(resSuccess.body.success).toBe(true);
+    expect(resSuccess.body.data.admissionNumber).toBe(`UPD-ADM-${randomNum}`);
+
+    // 3. Reject empty admission number update
+    const resEmpty = await request(app)
+      .put(`/api/v1/students/${targetStudent.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ admissionNumber: '   ' });
+
+    expect(resEmpty.status).toBe(400);
+    expect(resEmpty.body.success).toBe(false);
+    expect(resEmpty.body.message).toContain('Admission number');
+
+    // 4. Reject invalid characters update
+    const resInvalid = await request(app)
+      .put(`/api/v1/students/${targetStudent.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ admissionNumber: 'INVALID_CHAR_123' });
+
+    expect(resInvalid.status).toBe(400);
+    expect(resInvalid.body.success).toBe(false);
+    expect(resInvalid.body.message).toContain('only letters, numbers, and hyphens');
+
+    // 5. Reject duplicate admission number update
+    if (otherStudent) {
+      const resDup = await request(app)
+        .put(`/api/v1/students/${targetStudent.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ admissionNumber: otherStudent.admissionNumber.toLowerCase() });
+
+      expect(resDup.status).toBe(400);
+      expect(resDup.body.success).toBe(false);
+      expect(resDup.body.message).toContain('already used');
+    }
+  });
 });
 

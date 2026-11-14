@@ -37,6 +37,36 @@ export const getStudentByQr = async (req, res, next) => {
   }
 };
 
+export const validateAdmissionNumber = (admissionNumber, isRequired = true) => {
+  if (admissionNumber === undefined || admissionNumber === null) {
+    return isRequired ? 'Admission number is required and cannot be empty.' : null;
+  }
+
+  if (typeof admissionNumber !== 'string') {
+    return 'Admission number must be a valid string.';
+  }
+
+  const trimmed = admissionNumber.trim();
+  if (trimmed.length === 0) {
+    return 'Admission number cannot be empty.';
+  }
+
+  if (!/^[A-Za-z0-9-]+$/.test(trimmed)) {
+    return 'Admission number must contain only letters, numbers, and hyphens.';
+  }
+
+  if (trimmed.length < 3 || trimmed.length > 30) {
+    return 'Admission number must be between 3 and 30 characters.';
+  }
+
+  return null;
+};
+
+export const normalizeAdmissionNumber = (admissionNumber) => {
+  if (!admissionNumber || typeof admissionNumber !== 'string') return admissionNumber;
+  return admissionNumber.trim().toUpperCase();
+};
+
 const validateStudentPayload = (body, isUpdate = false) => {
   const { name, admissionNumber, rollNumber, classId, dateOfBirth, gender, guardianPhone } = body;
 
@@ -47,8 +77,9 @@ const validateStudentPayload = (body, isUpdate = false) => {
   }
 
   if (!isUpdate || admissionNumber !== undefined) {
-    if (!admissionNumber || typeof admissionNumber !== 'string' || !/^[A-Za-z0-9_-]{3,30}$/.test(admissionNumber.trim())) {
-      return 'Admission number is required and must be 3-30 letters, numbers, or dashes.';
+    const admissionError = validateAdmissionNumber(admissionNumber, !isUpdate);
+    if (admissionError) {
+      return admissionError;
     }
   }
 
@@ -99,7 +130,7 @@ export const createStudent = async (req, res, next) => {
 
     const student = await studentService.createStudent({
       name,
-      admissionNumber,
+      admissionNumber: normalizeAdmissionNumber(admissionNumber),
       rollNumber,
       classId,
       schoolId: req.user.schoolId,
@@ -123,10 +154,16 @@ export const updateStudent = async (req, res, next) => {
       return sendError(res, validationError, 400);
     }
 
-    const updated = await studentService.updateStudent(req.params.id, req.user.schoolId, {
+    const updatePayload = {
       ...req.body,
       actorId: req.user.id,
-    });
+    };
+
+    if (req.body.admissionNumber !== undefined) {
+      updatePayload.admissionNumber = normalizeAdmissionNumber(req.body.admissionNumber);
+    }
+
+    const updated = await studentService.updateStudent(req.params.id, req.user.schoolId, updatePayload);
     return sendSuccess(res, 'Student updated successfully.', updated);
   } catch (err) {
     return sendError(res, err.message, 400);
