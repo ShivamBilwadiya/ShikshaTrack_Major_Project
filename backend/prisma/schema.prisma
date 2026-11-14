@@ -54,6 +54,8 @@ model School {
   timetableEntries TimetableEntry[]
   academicEvents   AcademicEvent[]
   examinations     Examination[]
+  studentLeaves    StudentLeave[]
+  studentIncidents StudentIncident[]
 
   @@map("schools")
 }
@@ -75,6 +77,12 @@ model User {
   auditLogs          AuditLog[]
   notifications      Notification[]
   timetableEntries   TimetableEntry[]
+  appliedLeaves      StudentLeave[]          @relation("LeaveApplicant")
+  reviewedLeaves     StudentLeave[]          @relation("LeaveReviewer")
+  leaveDecisions     StudentLeaveDecision[]
+  reportedIncidents  StudentIncident[]       @relation("IncidentReporter")
+  resolvedIncidents  StudentIncident[]       @relation("IncidentResolver")
+  incidentActions    IncidentActionHistory[]
 
   @@map("users")
 }
@@ -94,6 +102,8 @@ model Class {
   attendanceSessions AttendanceSession[]
   timetableEntries   TimetableEntry[]
   examinations       Examination[]
+  studentLeaves      StudentLeave[]
+  studentIncidents   StudentIncident[]
 
   @@unique([schoolId, name, section, academicYear])
   @@map("classes")
@@ -132,6 +142,8 @@ model Student {
 
   attendanceRecords AttendanceRecord[]
   examMarks         ExamMark[]
+  studentLeaves     StudentLeave[]
+  studentIncidents  StudentIncident[]
 
   @@unique([schoolId, admissionNumber])
   @@index([classId])
@@ -336,4 +348,134 @@ model ExamMark {
   @@unique([examSubjectId, studentId])
   @@index([studentId])
   @@map("exam_marks")
+}
+
+enum LeaveType {
+  SICK
+  FAMILY
+  PERSONAL
+  EMERGENCY
+  OTHER
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model StudentLeave {
+  id            String                 @id @default(uuid())
+  schoolId      String
+  school        School                 @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId     String
+  student       Student                @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  classId       String
+  class         Class                  @relation(fields: [classId], references: [id], onDelete: Cascade)
+  appliedById   String?
+  appliedBy     User?                  @relation(name: "LeaveApplicant", fields: [appliedById], references: [id], onDelete: SetNull)
+  leaveType     LeaveType              @default(SICK)
+  startDate     DateTime
+  endDate       DateTime
+  totalDays     Int                    @default(1)
+  reason        String
+  documentUrl   String?
+  status        LeaveStatus            @default(PENDING)
+  reviewRemarks String?
+  reviewedAt    DateTime?
+  reviewedById  String?
+  reviewedBy    User?                  @relation(name: "LeaveReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  decisions     StudentLeaveDecision[]
+
+  @@index([schoolId, status])
+  @@index([schoolId, classId, startDate])
+  @@index([studentId, startDate, endDate])
+  @@map("student_leaves")
+}
+
+model StudentLeaveDecision {
+  id         String       @id @default(uuid())
+  leaveId    String
+  leave      StudentLeave @relation(fields: [leaveId], references: [id], onDelete: Cascade)
+  reviewerId String?
+  reviewer   User?        @relation(fields: [reviewerId], references: [id], onDelete: SetNull)
+  action     LeaveStatus  @default(APPROVED)
+  remarks    String
+  decidedAt  DateTime     @default(now())
+
+  @@index([leaveId])
+  @@map("student_leave_decisions")
+}
+
+enum IncidentCategory {
+  BEHAVIOUR
+  ATTENDANCE
+  ACADEMIC
+  SAFETY
+  OTHER
+}
+
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentStatus {
+  REPORTED
+  UNDER_INVESTIGATION
+  RESOLVED
+  CLOSED
+}
+
+model StudentIncident {
+  id              String                  @id @default(uuid())
+  schoolId        String
+  school          School                  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId       String
+  student         Student                 @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  classId         String
+  class           Class                   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  reportedById    String?
+  reportedBy      User?                   @relation(name: "IncidentReporter", fields: [reportedById], references: [id], onDelete: SetNull)
+  title           String
+  description     String
+  incidentDate    DateTime                @default(now())
+  category        IncidentCategory        @default(BEHAVIOUR)
+  severity        IncidentSeverity        @default(MEDIUM)
+  status          IncidentStatus          @default(REPORTED)
+  actionTaken     String?
+  resolutionNotes String?
+  isPrivate       Boolean                 @default(false)
+  resolvedAt      DateTime?
+  resolvedById    String?
+  resolvedBy      User?                   @relation(name: "IncidentResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  history         IncidentActionHistory[]
+
+  @@index([schoolId, category, severity])
+  @@index([schoolId, status])
+  @@index([studentId, incidentDate])
+  @@map("student_incidents")
+}
+
+model IncidentActionHistory {
+  id         String          @id @default(uuid())
+  incidentId String
+  incident   StudentIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  actorId    String?
+  actor      User?           @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action     String          // "REPORTED", "STATUS_CHANGE", "ACTION_TAKEN", "RESOLVED", "NOTE_ADDED"
+  notes      String?
+  timestamp  DateTime        @default(now())
+
+  @@index([incidentId])
+  @@map("incident_action_history")
 }

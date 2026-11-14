@@ -113,8 +113,40 @@ export const getSessionDetails = async (sessionId, schoolId) => {
     recordMap.set(record.studentId, record);
   }
 
+  // Attendance Integration: Fetch active approved leaves for this session date
+  const sessionDate = new Date(session.sessionDate);
+  const startOfDay = new Date(sessionDate);
+  startOfDay.setUTCHours(0, 0, 0, 0);
+  const endOfDay = new Date(sessionDate);
+  endOfDay.setUTCHours(23, 59, 59, 999);
+
+  let approvedLeaves = [];
+  try {
+    approvedLeaves = await prisma.studentLeave.findMany({
+      where: {
+        schoolId,
+        classId: session.classId,
+        status: 'APPROVED',
+        startDate: { lte: endOfDay },
+        endDate: { gte: startOfDay },
+      },
+      include: {
+        student: { select: { id: true, name: true } },
+      },
+    });
+  } catch (err) {
+    // Graceful fallback if table is unavailable
+    approvedLeaves = [];
+  }
+
+  const leaveMap = new Map();
+  for (const leave of approvedLeaves) {
+    leaveMap.set(leave.studentId, leave);
+  }
+
   const roster = students.map((st) => {
     const record = recordMap.get(st.id);
+    const leave = leaveMap.get(st.id);
     return {
       studentId: st.id,
       name: st.name,
@@ -122,17 +154,28 @@ export const getSessionDetails = async (sessionId, schoolId) => {
       rollNumber: st.rollNumber,
       qrToken: st.qrToken,
       marked: Boolean(record),
-      status: record ? record.status : 'UNMARKED',
+      status: record ? record.status : (leave ? 'ON_LEAVE' : 'UNMARKED'),
+      isApprovedLeave: Boolean(leave),
+      leaveDetails: leave
+        ? {
+            id: leave.id,
+            leaveType: leave.leaveType,
+            reason: leave.reason,
+            startDate: leave.startDate,
+            endDate: leave.endDate,
+          }
+        : null,
       method: record ? record.method : null,
       markedAt: record ? record.markedAt : null,
       recordId: record ? record.id : null,
-      remarks: record ? record.remarks : null,
+      remarks: record ? record.remarks : (leave ? `Approved Leave (${leave.leaveType})` : null),
     };
   });
 
   const presentCount = roster.filter((r) => r.status === 'PRESENT').length;
   const lateCount = roster.filter((r) => r.status === 'LATE').length;
   const absentCount = roster.filter((r) => r.status === 'ABSENT').length;
+  const onLeaveCount = roster.filter((r) => r.isApprovedLeave).length;
   const unmarkedCount = roster.filter((r) => r.status === 'UNMARKED').length;
 
   return {
@@ -153,6 +196,7 @@ export const getSessionDetails = async (sessionId, schoolId) => {
       presentCount,
       lateCount,
       absentCount,
+      onLeaveCount,
       unmarkedCount,
       attendanceRate: students.length > 0 ? Math.round(((presentCount + lateCount) / students.length) * 100) : 0,
     },
