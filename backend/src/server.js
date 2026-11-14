@@ -3,6 +3,15 @@ import { config } from './config/env.js';
 import prisma from './config/db.js';
 
 const PORT = config.port || 5000;
+const cors = require("cors");
+
+app.use(cors({
+  origin: [
+    "http://localhost:5173",
+    "https://shiksha-track-major-project.vercel.app"
+  ],
+  credentials: true
+}));
 
 async function startServer() {
   try {
