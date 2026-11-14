@@ -53,6 +53,7 @@ model School {
   notifications    Notification[]
   timetableEntries TimetableEntry[]
   academicEvents   AcademicEvent[]
+  examinations     Examination[]
 
   @@map("schools")
 }
@@ -92,6 +93,7 @@ model Class {
   teacherAssignments TeacherAssignment[]
   attendanceSessions AttendanceSession[]
   timetableEntries   TimetableEntry[]
+  examinations       Examination[]
 
   @@unique([schoolId, name, section, academicYear])
   @@map("classes")
@@ -129,6 +131,7 @@ model Student {
   updatedAt       DateTime  @updatedAt
 
   attendanceRecords AttendanceRecord[]
+  examMarks         ExamMark[]
 
   @@unique([schoolId, admissionNumber])
   @@index([classId])
@@ -270,4 +273,67 @@ model AcademicEvent {
   @@index([schoolId, startDate, endDate])
   @@index([schoolId, type])
   @@map("academic_events")
+}
+
+enum ExamType {
+  UNIT_TEST
+  MIDTERM
+  FINAL
+  PRACTICAL
+  ASSESSMENT
+}
+
+model Examination {
+  id           String        @id @default(uuid())
+  schoolId     String
+  school       School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  name         String        // e.g. "Term 1 Midterm Assessment", "Final Exam 2026"
+  examType     ExamType      @default(MIDTERM)
+  academicYear String        // e.g. "2026-2027"
+  classId      String?
+  class        Class?        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  startDate    DateTime
+  endDate      DateTime
+  description  String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  examSubjects ExamSubject[]
+
+  @@index([schoolId, academicYear])
+  @@index([schoolId, classId])
+  @@map("examinations")
+}
+
+model ExamSubject {
+  id            String      @id @default(uuid())
+  examinationId String
+  examination   Examination @relation(fields: [examinationId], references: [id], onDelete: Cascade)
+  subject       String      // e.g. "Mathematics", "Science", "English"
+  maxMarks      Float       @default(100)
+  passMarks     Float       @default(33)
+  examDate      DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  marks         ExamMark[]
+
+  @@unique([examinationId, subject])
+  @@map("exam_subjects")
+}
+
+model ExamMark {
+  id            String      @id @default(uuid())
+  examSubjectId String
+  examSubject   ExamSubject @relation(fields: [examSubjectId], references: [id], onDelete: Cascade)
+  studentId     String
+  student       Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  marksObtained Float
+  remarks       String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([examSubjectId, studentId])
+  @@index([studentId])
+  @@map("exam_marks")
 }

@@ -197,6 +197,7 @@ All **21 automated tests** covering Authentication, Student CRUD, QR Attendance,
 
 Comprehensive academic documentation has been created inside `docs/`:
 
+- [docs/examination-and-result-management.md](file:///Users/shivrajbissa/ShikshaTrack/docs/examination-and-result-management.md): Examination administration, subject marks entry, grading scale, and result exports.
 - [docs/school-timetable-and-scheduling.md](file:///Users/shivrajbissa/ShikshaTrack/docs/school-timetable-and-scheduling.md): School timetable, period management, and faculty conflict detection.
 - [docs/school-notifications-and-alerts.md](file:///Users/shivrajbissa/ShikshaTrack/docs/school-notifications-and-alerts.md): School notifications, proactive attendance alerts, and dismissal lifecycle.
 - [docs/team-contribution-matrix.md](file:///Users/shivrajbissa/ShikshaTrack/docs/team-contribution-matrix.md): Cross-functional ownership mapping Member 1, Member 2, and Member 3 across DE, ASD, and ISD.

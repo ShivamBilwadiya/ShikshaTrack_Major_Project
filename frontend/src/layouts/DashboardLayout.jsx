@@ -9,6 +9,7 @@ import {
   GraduationCap,
   Building2,
   CalendarDays,
+  Award,
   QrCode,
   ScanLine,
   ClipboardCheck,
@@ -47,6 +48,7 @@ export default function DashboardLayout() {
         { label: 'Faculty Management', path: '/teachers', icon: Users },
         { label: 'School Timetable', path: '/timetable', icon: CalendarDays },
         { label: 'Academic Calendar', path: '/calendar', icon: CalendarDays },
+        { label: 'Examinations & Marks', path: '/exams', icon: Award },
         { label: 'QR ID Cards', path: '/qr-cards', icon: QrCode },
         { label: 'Attendance Reports', path: '/reports', icon: BarChart3 },
         { label: 'Visual Analytics', path: '/analytics', icon: TrendingUp },
@@ -62,6 +64,7 @@ export default function DashboardLayout() {
         { label: 'Attendance History', path: '/attendance/history', icon: History },
         { label: 'Weekly Timetable', path: '/timetable', icon: CalendarDays },
         { label: 'Academic Calendar', path: '/calendar', icon: CalendarDays },
+        { label: 'Exams & Marks Entry', path: '/exams', icon: Award },
         { label: 'Class Reports', path: '/reports', icon: BarChart3 },
         { label: 'Offline Sync Center', path: '/sync', icon: CloudOff, badge: pendingCount },
       ];

@@ -11,6 +11,7 @@ import syncRoutes from './syncRoutes.js';
 import notificationRoutes from './notificationRoutes.js';
 import timetableRoutes from './timetableRoutes.js';
 import calendarRoutes from './calendarRoutes.js';
+import examRoutes from './examRoutes.js';
 
 const router = Router();
 
@@ -37,6 +38,7 @@ router.use('/sync', syncRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/timetable', timetableRoutes);
 router.use('/calendar', calendarRoutes);
+router.use('/exams', examRoutes);
 
 export default router;
 
