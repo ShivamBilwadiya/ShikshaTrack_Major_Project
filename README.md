@@ -197,6 +197,7 @@ All **21 automated tests** covering Authentication, Student CRUD, QR Attendance,
 
 Comprehensive academic documentation has been created inside `docs/`:
 
+- [docs/attendance-analytics-and-intelligence.md](file:///Users/shivrajbissa/ShikshaTrack/docs/attendance-analytics-and-intelligence.md): Advanced attendance intelligence, predictive trends, truancy detection, and class benchmarks.
 - [docs/student-leave-and-discipline-management.md](file:///Users/shivrajbissa/ShikshaTrack/docs/student-leave-and-discipline-management.md): Student leave applications, approval workflows, attendance exemptions, and discipline/incident register.
 - [docs/examination-and-result-management.md](file:///Users/shivrajbissa/ShikshaTrack/docs/examination-and-result-management.md): Examination administration, subject marks entry, grading scale, and result exports.
 - [docs/school-timetable-and-scheduling.md](file:///Users/shivrajbissa/ShikshaTrack/docs/school-timetable-and-scheduling.md): School timetable, period management, and faculty conflict detection.

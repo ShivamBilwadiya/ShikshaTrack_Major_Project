@@ -55,6 +55,7 @@ export default function DashboardLayout() {
         { label: 'Discipline & Incidents', path: '/incidents', icon: ShieldAlert },
         { label: 'QR ID Cards', path: '/qr-cards', icon: QrCode },
         { label: 'Attendance Reports', path: '/reports', icon: BarChart3 },
+        { label: 'Attendance Intelligence', path: '/attendance/analytics', icon: TrendingUp },
         { label: 'Visual Analytics', path: '/analytics', icon: TrendingUp },
         { label: 'AI Insights & Anomaly', path: '/ai-insights', icon: BrainCircuit },
         { label: 'AI Report Generator', path: '/ai-reports', icon: FileSpreadsheet },
@@ -72,6 +73,7 @@ export default function DashboardLayout() {
         { label: 'Student Leaves', path: '/leaves', icon: CalendarCheck },
         { label: 'Discipline & Incidents', path: '/incidents', icon: ShieldAlert },
         { label: 'Class Reports', path: '/reports', icon: BarChart3 },
+        { label: 'Attendance Intelligence', path: '/attendance/analytics', icon: TrendingUp },
         { label: 'Offline Sync Center', path: '/sync', icon: CloudOff, badge: pendingCount },
       ];
 

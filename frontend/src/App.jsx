@@ -23,6 +23,7 @@ import QrAttendanceScanner from './pages/QrAttendanceScanner';
 import ManualAttendance from './pages/ManualAttendance';
 import AttendanceHistory from './pages/AttendanceHistory';
 import AttendanceReports from './pages/AttendanceReports';
+import AttendanceAnalytics from './pages/AttendanceAnalytics';
 import Analytics from './pages/Analytics';
 import AiInsights from './pages/AiInsights';
 import AiReportGenerator from './pages/AiReportGenerator';
@@ -148,6 +149,7 @@ export default function App() {
 
               {/* Reports & Visual Analytics */}
               <Route path="reports" element={<AttendanceReports />} />
+              <Route path="attendance/analytics" element={<AttendanceAnalytics />} />
               <Route path="analytics" element={<Analytics />} />
 
               {/* AI Features */}
