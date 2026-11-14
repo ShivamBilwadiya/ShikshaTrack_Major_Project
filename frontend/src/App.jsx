@@ -14,6 +14,7 @@ import StudentProfile from './pages/StudentProfile';
 import ClassManagement from './pages/ClassManagement';
 import TeacherManagement from './pages/TeacherManagement';
 import TimetableManagement from './pages/TimetableManagement';
+import AcademicCalendar from './pages/AcademicCalendar';
 import QrIdCards from './pages/QrIdCards';
 import QrAttendanceScanner from './pages/QrAttendanceScanner';
 import ManualAttendance from './pages/ManualAttendance';
@@ -129,6 +130,7 @@ export default function App() {
                 }
               />
               <Route path="timetable" element={<TimetableManagement />} />
+              <Route path="calendar" element={<AcademicCalendar />} />
 
               {/* QR ID Cards Print Sheet */}
               <Route path="qr-cards" element={<QrIdCards />} />

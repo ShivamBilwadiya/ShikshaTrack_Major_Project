@@ -52,6 +52,7 @@ model School {
   students         Student[]
   notifications    Notification[]
   timetableEntries TimetableEntry[]
+  academicEvents   AcademicEvent[]
 
   @@map("schools")
 }
@@ -244,4 +245,29 @@ model TimetableEntry {
   @@index([schoolId, teacherId, dayOfWeek])
   @@index([schoolId, dayOfWeek])
   @@map("timetable_entries")
+}
+
+enum AcademicEventType {
+  HOLIDAY
+  EXAM
+  EVENT
+  ACADEMIC
+}
+
+model AcademicEvent {
+  id          String            @id @default(uuid())
+  schoolId    String
+  school      School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  type        AcademicEventType @default(EVENT)
+  startDate   DateTime
+  endDate     DateTime
+  isHoliday   Boolean           @default(false)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([schoolId, startDate, endDate])
+  @@index([schoolId, type])
+  @@map("academic_events")
 }

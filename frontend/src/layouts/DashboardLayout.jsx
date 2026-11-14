@@ -46,6 +46,7 @@ export default function DashboardLayout() {
         { label: 'Class Management', path: '/classes', icon: Building2 },
         { label: 'Faculty Management', path: '/teachers', icon: Users },
         { label: 'School Timetable', path: '/timetable', icon: CalendarDays },
+        { label: 'Academic Calendar', path: '/calendar', icon: CalendarDays },
         { label: 'QR ID Cards', path: '/qr-cards', icon: QrCode },
         { label: 'Attendance Reports', path: '/reports', icon: BarChart3 },
         { label: 'Visual Analytics', path: '/analytics', icon: TrendingUp },
@@ -60,6 +61,7 @@ export default function DashboardLayout() {
         { label: 'Manual Register', path: '/attendance/manual', icon: ClipboardCheck },
         { label: 'Attendance History', path: '/attendance/history', icon: History },
         { label: 'Weekly Timetable', path: '/timetable', icon: CalendarDays },
+        { label: 'Academic Calendar', path: '/calendar', icon: CalendarDays },
         { label: 'Class Reports', path: '/reports', icon: BarChart3 },
         { label: 'Offline Sync Center', path: '/sync', icon: CloudOff, badge: pendingCount },
       ];
