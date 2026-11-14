@@ -54,7 +54,7 @@ export const scanQr = async (req, res, next) => {
 
 export const markManual = async (req, res, next) => {
   try {
-    const { sessionId, studentId, status, remarks } = req.body;
+    const { sessionId, studentId, status, remarks, preventDuplicate } = req.body;
     if (!sessionId || !studentId || !status) {
       return sendError(res, 'Session ID, student ID, and status are required.', 400);
     }
@@ -67,17 +67,18 @@ export const markManual = async (req, res, next) => {
       schoolId: req.user.schoolId,
       actorId: req.user.id,
       method: 'MANUAL',
+      preventDuplicate: Boolean(preventDuplicate),
     });
 
     return sendSuccess(res, 'Attendance marked successfully.', record);
   } catch (err) {
-    next(err);
+    return sendError(res, err.message, err.statusCode || 400);
   }
 };
 
 export const bulkMarkManual = async (req, res, next) => {
   try {
-    const { sessionId, records } = req.body;
+    const { sessionId, records, preventDuplicate } = req.body;
     if (!sessionId || !Array.isArray(records)) {
       return sendError(res, 'Session ID and records array are required.', 400);
     }
@@ -87,11 +88,12 @@ export const bulkMarkManual = async (req, res, next) => {
       records,
       schoolId: req.user.schoolId,
       actorId: req.user.id,
+      preventDuplicate: Boolean(preventDuplicate),
     });
 
     return sendSuccess(res, `Bulk attendance updated for ${updated.length} students.`, updated);
   } catch (err) {
-    next(err);
+    return sendError(res, err.message, err.statusCode || 400);
   }
 };
 

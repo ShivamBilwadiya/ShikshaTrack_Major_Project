@@ -94,6 +94,71 @@ describe('Attendance Session & QR Scanning API', () => {
     expect(res.body.data.status).toBe('PRESENT');
   });
 
+  it('POST /api/v1/attendance/manual - should reject invalid attendance status', async () => {
+    const res = await request(app)
+      .post('/api/v1/attendance/manual')
+      .set('Authorization', `Bearer ${teacherToken}`)
+      .send({
+        sessionId: activeSessionId,
+        studentId: student8A.id,
+        status: 'UNKNOWN_STATUS_ENUM',
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toContain('Invalid attendance status');
+  });
+
+  it('POST /api/v1/attendance/manual - should prevent duplicate manual attendance when preventDuplicate is enabled', async () => {
+    const res = await request(app)
+      .post('/api/v1/attendance/manual')
+      .set('Authorization', `Bearer ${teacherToken}`)
+      .send({
+        sessionId: activeSessionId,
+        studentId: student8A.id,
+        status: 'PRESENT',
+        preventDuplicate: true,
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toContain('Duplicate Entry');
+  });
+
+  it('POST /api/v1/attendance/manual/bulk - should reject duplicate student IDs in the same request batch', async () => {
+    const res = await request(app)
+      .post('/api/v1/attendance/manual/bulk')
+      .set('Authorization', `Bearer ${teacherToken}`)
+      .send({
+        sessionId: activeSessionId,
+        records: [
+          { studentId: student8A.id, status: 'PRESENT' },
+          { studentId: student8A.id, status: 'LATE' },
+        ],
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toContain('Duplicate Entry');
+  });
+
+  it('POST /api/v1/attendance/manual/bulk - should rollback entire transaction if any single record has invalid status', async () => {
+    const res = await request(app)
+      .post('/api/v1/attendance/manual/bulk')
+      .set('Authorization', `Bearer ${teacherToken}`)
+      .send({
+        sessionId: activeSessionId,
+        records: [
+          { studentId: student8A.id, status: 'PRESENT' },
+          { studentId: student9A.id, status: 'INVALID_FAIL_STATUS' },
+        ],
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toContain('Invalid attendance status');
+  });
+
   it('POST /api/v1/attendance/scan - should prevent duplicate scans for already marked student', async () => {
     const res = await request(app)
       .post('/api/v1/attendance/scan')

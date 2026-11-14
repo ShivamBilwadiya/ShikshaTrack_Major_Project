@@ -269,6 +269,8 @@ export const scanQrCode = async ({ sessionId, qrToken, schoolId, teacherId, stat
   }
 };
 
+export const VALID_ATTENDANCE_STATUSES = ['PRESENT', 'ABSENT', 'LATE', 'EXCUSED'];
+
 /**
  * Mark manual attendance for a single student or batch
  */
@@ -280,17 +282,34 @@ export const markManualRecord = async ({
   schoolId,
   actorId,
   method = 'MANUAL',
+  preventDuplicate = false,
 }) => {
+  const normStatus = status ? status.toUpperCase() : null;
+  if (!normStatus || !VALID_ATTENDANCE_STATUSES.includes(normStatus)) {
+    const err = new Error(
+      `Invalid attendance status: "${status}". Supported values are: ${VALID_ATTENDANCE_STATUSES.join(', ')}.`
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const VALID_METHODS = ['MANUAL', 'QR', 'OFFLINE_SYNC'];
+  const recordMethod = VALID_METHODS.includes(method) ? method : 'MANUAL';
+
   const session = await prisma.attendanceSession.findFirst({
     where: { id: sessionId, class: { schoolId } },
   });
 
   if (!session) {
-    throw new Error('Attendance session not found.');
+    const err = new Error('Attendance session not found.');
+    err.statusCode = 404;
+    throw err;
   }
 
   if (session.status === 'CLOSED') {
-    throw new Error('Cannot modify: Session is already closed.');
+    const err = new Error('Cannot modify: Session is already closed.');
+    err.statusCode = 400;
+    throw err;
   }
 
   // Verify student belongs to session class
@@ -299,64 +318,150 @@ export const markManualRecord = async ({
   });
 
   if (!student) {
-    throw new Error('Student does not belong to this class.');
+    const err = new Error('Student does not belong to this class.');
+    err.statusCode = 400;
+    throw err;
   }
 
-  const record = await prisma.attendanceRecord.upsert({
-    where: {
-      sessionId_studentId: {
-        sessionId,
-        studentId,
-      },
-    },
-    update: {
-      status,
-      method,
-      remarks,
-      markedAt: new Date(),
-    },
-    create: {
-      sessionId,
-      studentId,
-      status,
-      method,
-      remarks,
-      markedAt: new Date(),
-    },
-    include: {
-      student: true,
-    },
-  });
+  try {
+    const record = await prisma.$transaction(async (tx) => {
+      const existing = await tx.attendanceRecord.findUnique({
+        where: {
+          sessionId_studentId: {
+            sessionId,
+            studentId,
+          },
+        },
+      });
 
-  await logAudit({
-    actorId,
-    action: 'ATTENDANCE_MARKED_MANUAL',
-    entityType: 'AttendanceRecord',
-    entityId: record.id,
-    newValue: { studentId, status, method, remarks },
-  });
+      if (preventDuplicate && existing) {
+        const err = new Error(
+          `Duplicate Entry! Attendance for ${student.name} has already been marked as ${existing.status} in this session.`
+        );
+        err.statusCode = 400;
+        throw err;
+      }
 
-  return record;
+      const rec = await tx.attendanceRecord.upsert({
+        where: {
+          sessionId_studentId: {
+            sessionId,
+            studentId,
+          },
+        },
+        update: {
+          status: normStatus,
+          method: recordMethod,
+          remarks: remarks !== undefined ? remarks : existing?.remarks,
+          markedAt: new Date(),
+        },
+        create: {
+          sessionId,
+          studentId,
+          status: normStatus,
+          method: recordMethod,
+          remarks: remarks || null,
+          markedAt: new Date(),
+        },
+        include: {
+          student: true,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          actorId: actorId || null,
+          action: existing ? 'ATTENDANCE_RECORD_UPDATED' : 'ATTENDANCE_MARKED_MANUAL',
+          entityType: 'AttendanceRecord',
+          entityId: rec.id,
+          previousValue: existing ? JSON.stringify({ status: existing.status, method: existing.method }) : null,
+          newValue: JSON.stringify({ studentId, status: normStatus, method: recordMethod, remarks: remarks || null }),
+          reason: existing ? 'Manual status change' : 'Initial manual mark',
+        },
+      });
+
+      return rec;
+    });
+
+    return record;
+  } catch (err) {
+    if (err.code === 'P2002') {
+      const p2002Err = new Error(
+        `Duplicate Entry! Attendance for ${student.name} has already been recorded for this session.`
+      );
+      p2002Err.statusCode = 400;
+      throw p2002Err;
+    }
+    throw err;
+  }
 };
 
 /**
  * Bulk mark manual attendance for multiple students
  */
-export const bulkMarkManual = async ({ sessionId, records, schoolId, actorId }) => {
+export const bulkMarkManual = async ({ sessionId, records, schoolId, actorId, preventDuplicate = false }) => {
   const session = await prisma.attendanceSession.findFirst({
     where: { id: sessionId, class: { schoolId } },
   });
 
   if (!session) {
-    throw new Error('Attendance session not found.');
+    const err = new Error('Attendance session not found.');
+    err.statusCode = 404;
+    throw err;
   }
 
   if (session.status === 'CLOSED') {
-    throw new Error('Cannot update: Session is already closed.');
+    const err = new Error('Cannot update: Session is already closed.');
+    err.statusCode = 400;
+    throw err;
   }
 
-  // Atomic bulk transaction for all attendance records
+  // 1. Validate incoming records batch
+  const seenStudentIds = new Set();
+  for (const item of records) {
+    if (!item.studentId) {
+      const err = new Error('Student ID is required for all records in bulk update.');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (seenStudentIds.has(item.studentId)) {
+      const err = new Error(
+        `Duplicate Entry! Multiple attendance entries provided for student ID "${item.studentId}" in the same request.`
+      );
+      err.statusCode = 400;
+      throw err;
+    }
+    seenStudentIds.add(item.studentId);
+
+    const normStatus = item.status ? item.status.toUpperCase() : null;
+    if (!normStatus || !VALID_ATTENDANCE_STATUSES.includes(normStatus)) {
+      const err = new Error(
+        `Invalid attendance status "${item.status}" for student ID "${item.studentId}". Supported values are: ${VALID_ATTENDANCE_STATUSES.join(', ')}.`
+      );
+      err.statusCode = 400;
+      throw err;
+    }
+    item.status = normStatus;
+  }
+
+  // 2. Atomic bulk transaction
   const updatedRecords = await prisma.$transaction(async (tx) => {
+    if (preventDuplicate) {
+      const existing = await tx.attendanceRecord.findFirst({
+        where: {
+          sessionId,
+          studentId: { in: Array.from(seenStudentIds) },
+        },
+      });
+      if (existing) {
+        const err = new Error(
+          `Duplicate Entry! Student ID "${existing.studentId}" already has attendance recorded for this session.`
+        );
+        err.statusCode = 400;
+        throw err;
+      }
+    }
+
     const batch = [];
     for (const item of records) {
       const record = await tx.attendanceRecord.upsert({
@@ -383,15 +488,18 @@ export const bulkMarkManual = async ({ sessionId, records, schoolId, actorId }) 
       });
       batch.push(record);
     }
-    return batch;
-  });
 
-  await logAudit({
-    actorId,
-    action: 'ATTENDANCE_BULK_MARKED',
-    entityType: 'AttendanceSession',
-    entityId: sessionId,
-    newValue: { count: updatedRecords.length },
+    await tx.auditLog.create({
+      data: {
+        actorId: actorId || null,
+        action: 'ATTENDANCE_BULK_MARKED',
+        entityType: 'AttendanceSession',
+        entityId: sessionId,
+        newValue: JSON.stringify({ count: batch.length, records: batch.map((b) => ({ id: b.id, studentId: b.studentId, status: b.status })) }),
+      },
+    });
+
+    return batch;
   });
 
   return updatedRecords;
