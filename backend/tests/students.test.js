@@ -367,5 +367,89 @@ describe('Student CRUD & QR Tokens API', () => {
       expect(res.body.data.errors[0].error).toBeDefined();
     });
   });
+
+  describe('Student Profile Data Quality & Normalization', () => {
+    it('POST /api/v1/students - should normalize names by trimming and collapsing repeated whitespace', async () => {
+      const r = Math.floor(10000 + Math.random() * 90000);
+      const res = await request(app)
+        .post('/api/v1/students')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          name: '   Pooja    Kumari     Sharma   ',
+          admissionNumber: `NORM-ADM-${r}`,
+          classId: sampleClassId,
+          guardianName: '   Sunil    Sharma   ',
+          guardianPhone: '98765-43210',
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.name).toBe('Pooja Kumari Sharma');
+      expect(res.body.data.guardianName).toBe('Sunil Sharma');
+      expect(res.body.data.guardianPhone).toBe('9876543210');
+    });
+
+    it('POST /api/v1/students - should reject future dates of birth with field-specific error', async () => {
+      const futureDate = new Date(Date.now() + 86400000 * 30).toISOString().split('T')[0];
+      const res = await request(app)
+        .post('/api/v1/students')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          name: 'Future Student',
+          admissionNumber: `FUT-ADM-${Date.now()}`,
+          classId: sampleClassId,
+          dateOfBirth: futureDate,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toContain('past date');
+      expect(res.body.errors).toBeDefined();
+      expect(res.body.errors.dateOfBirth).toContain('past date');
+    });
+
+    it('POST /api/v1/students - should reject invalid phone formats and return field-specific error', async () => {
+      const res = await request(app)
+        .post('/api/v1/students')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          name: 'Invalid Phone Student',
+          admissionNumber: `PH-ADM-${Date.now()}`,
+          classId: sampleClassId,
+          guardianPhone: '12345',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.errors.guardianPhone).toBeDefined();
+    });
+
+    it('PUT /api/v1/students/:id - should validate and normalize updated profile fields', async () => {
+      // Create student first
+      const r = Math.floor(10000 + Math.random() * 90000);
+      const createRes = await request(app)
+        .post('/api/v1/students')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          name: 'Raw Student Name',
+          admissionNumber: `UPD-ADM-${r}`,
+          classId: sampleClassId,
+        });
+      expect(createRes.status).toBe(201);
+      const studentId = createRes.body.data.id;
+
+      // Update with redundant whitespace and formatted phone
+      const updateRes = await request(app)
+        .put(`/api/v1/students/${studentId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          name: '   Cleaned   Student    Name  ',
+          guardianPhone: '+91 (98765) 43210',
+        });
+
+      expect(updateRes.status).toBe(200);
+      expect(updateRes.body.data.name).toBe('Cleaned Student Name');
+      expect(updateRes.body.data.guardianPhone).toBe('+919876543210');
+    });
+  });
 });
 

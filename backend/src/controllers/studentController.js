@@ -37,6 +37,37 @@ export const getStudentByQr = async (req, res, next) => {
   }
 };
 
+export const normalizeStudentName = (name) => {
+  if (!name || typeof name !== 'string') return name;
+  return name.trim().replace(/\s+/g, ' ');
+};
+
+export const normalizePhoneNumber = (phone) => {
+  if (!phone || typeof phone !== 'string') return phone;
+  return phone.trim().replace(/[\s\-()]/g, '');
+};
+
+export const validatePhoneNumber = (phone) => {
+  if (!phone || typeof phone !== 'string' || !phone.trim()) return null;
+  const cleaned = normalizePhoneNumber(phone);
+  if (!/^\+?\d{10,13}$/.test(cleaned)) {
+    return 'Guardian contact phone must be a valid 10-digit number.';
+  }
+  return null;
+};
+
+export const validateDateOfBirth = (dateOfBirth) => {
+  if (dateOfBirth === undefined || dateOfBirth === null || dateOfBirth === '') return null;
+  const dob = new Date(dateOfBirth);
+  if (isNaN(dob.getTime())) {
+    return 'Date of birth must be a valid calendar date.';
+  }
+  if (dob > new Date()) {
+    return 'Date of birth must be a valid past date.';
+  }
+  return null;
+};
+
 export const validateAdmissionNumber = (admissionNumber, isRequired = true) => {
   if (admissionNumber === undefined || admissionNumber === null) {
     return isRequired ? 'Admission number is required and cannot be empty.' : null;
@@ -67,53 +98,63 @@ export const normalizeAdmissionNumber = (admissionNumber) => {
   return admissionNumber.trim().toUpperCase();
 };
 
-const validateStudentPayload = (body, isUpdate = false) => {
+export const validateStudentPayload = (body, isUpdate = false) => {
   const { name, admissionNumber, rollNumber, classId, dateOfBirth, gender, guardianPhone } = body;
+  const errors = {};
 
   if (!isUpdate || name !== undefined) {
-    if (!name || typeof name !== 'string' || name.trim().length < 2) {
-      return 'Student full name is required and must be at least 2 characters.';
+    const cleanName = normalizeStudentName(name);
+    if (!cleanName || typeof cleanName !== 'string' || cleanName.length < 2) {
+      errors.name = 'Student full name is required and must be at least 2 characters.';
     }
   }
 
   if (!isUpdate || admissionNumber !== undefined) {
     const admissionError = validateAdmissionNumber(admissionNumber, !isUpdate);
     if (admissionError) {
-      return admissionError;
+      errors.admissionNumber = admissionError;
     }
   }
 
   if (!isUpdate || classId !== undefined) {
     if (!classId || typeof classId !== 'string') {
-      return 'A valid class assignment is required.';
+      errors.classId = 'A valid class assignment is required.';
     }
   }
 
   if (rollNumber !== undefined && rollNumber !== null && rollNumber !== '') {
     const parsedRoll = parseInt(rollNumber, 10);
     if (isNaN(parsedRoll) || parsedRoll <= 0) {
-      return 'Roll number must be a positive integer.';
+      errors.rollNumber = 'Roll number must be a positive integer.';
     }
   }
 
   if (guardianPhone !== undefined && guardianPhone !== null && guardianPhone !== '') {
-    const cleanPhone = String(guardianPhone).replace(/[\s+-]/g, '');
-    if (!/^\d{10,12}$/.test(cleanPhone)) {
-      return 'Guardian contact phone must be a valid 10-digit number.';
+    const phoneError = validatePhoneNumber(guardianPhone);
+    if (phoneError) {
+      errors.guardianPhone = phoneError;
     }
   }
 
   if (gender !== undefined && gender !== null && gender !== '') {
     if (!['Male', 'Female', 'Other'].includes(gender)) {
-      return 'Gender must be one of: Male, Female, Other.';
+      errors.gender = 'Gender must be one of: Male, Female, Other.';
     }
   }
 
   if (dateOfBirth !== undefined && dateOfBirth !== null && dateOfBirth !== '') {
-    const dob = new Date(dateOfBirth);
-    if (isNaN(dob.getTime()) || dob > new Date()) {
-      return 'Date of birth must be a valid past date.';
+    const dobError = validateDateOfBirth(dateOfBirth);
+    if (dobError) {
+      errors.dateOfBirth = dobError;
     }
+  }
+
+  const errorKeys = Object.keys(errors);
+  if (errorKeys.length > 0) {
+    return {
+      message: errors[errorKeys[0]],
+      errors,
+    };
   }
 
   return null;
@@ -121,23 +162,23 @@ const validateStudentPayload = (body, isUpdate = false) => {
 
 export const createStudent = async (req, res, next) => {
   try {
-    const validationError = validateStudentPayload(req.body, false);
-    if (validationError) {
-      return sendError(res, validationError, 400);
+    const validation = validateStudentPayload(req.body, false);
+    if (validation) {
+      return sendError(res, validation.message, 400, validation.errors);
     }
 
     const { name, admissionNumber, rollNumber, classId, dateOfBirth, gender, guardianName, guardianPhone } = req.body;
 
     const student = await studentService.createStudent({
-      name,
+      name: normalizeStudentName(name),
       admissionNumber: normalizeAdmissionNumber(admissionNumber),
       rollNumber,
       classId,
       schoolId: req.user.schoolId,
       dateOfBirth,
       gender,
-      guardianName,
-      guardianPhone,
+      guardianName: guardianName ? normalizeStudentName(guardianName) : null,
+      guardianPhone: guardianPhone ? normalizePhoneNumber(guardianPhone) : null,
       actorId: req.user.id,
     });
 
@@ -149,9 +190,9 @@ export const createStudent = async (req, res, next) => {
 
 export const updateStudent = async (req, res, next) => {
   try {
-    const validationError = validateStudentPayload(req.body, true);
-    if (validationError) {
-      return sendError(res, validationError, 400);
+    const validation = validateStudentPayload(req.body, true);
+    if (validation) {
+      return sendError(res, validation.message, 400, validation.errors);
     }
 
     const updatePayload = {
@@ -159,8 +200,20 @@ export const updateStudent = async (req, res, next) => {
       actorId: req.user.id,
     };
 
+    if (req.body.name !== undefined) {
+      updatePayload.name = normalizeStudentName(req.body.name);
+    }
+
     if (req.body.admissionNumber !== undefined) {
       updatePayload.admissionNumber = normalizeAdmissionNumber(req.body.admissionNumber);
+    }
+
+    if (req.body.guardianName !== undefined) {
+      updatePayload.guardianName = req.body.guardianName ? normalizeStudentName(req.body.guardianName) : null;
+    }
+
+    if (req.body.guardianPhone !== undefined) {
+      updatePayload.guardianPhone = req.body.guardianPhone ? normalizePhoneNumber(req.body.guardianPhone) : null;
     }
 
     const updated = await studentService.updateStudent(req.params.id, req.user.schoolId, updatePayload);

@@ -145,7 +145,7 @@ export const createStudent = async ({
 
   const student = await prisma.student.create({
     data: {
-      name: name.trim(),
+      name: name.trim().replace(/\s+/g, ' '),
       admissionNumber: cleanAdmission,
       rollNumber: rollNumber ? rollNumber.trim() : null,
       classId,
@@ -153,8 +153,8 @@ export const createStudent = async ({
       qrToken,
       dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
       gender: gender || null,
-      guardianName: guardianName ? guardianName.trim() : null,
-      guardianPhone: guardianPhone ? guardianPhone.trim() : null,
+      guardianName: guardianName ? guardianName.trim().replace(/\s+/g, ' ') : null,
+      guardianPhone: guardianPhone ? guardianPhone.trim().replace(/[\s\-()]/g, '') : null,
       active: true,
     },
     include: {
@@ -203,14 +203,14 @@ export const updateStudent = async (
   const updated = await prisma.student.update({
     where: { id },
     data: {
-      name: name ? name.trim() : current.name,
+      name: name ? name.trim().replace(/\s+/g, ' ') : current.name,
       admissionNumber: cleanAdmission !== undefined ? cleanAdmission : current.admissionNumber,
       rollNumber: rollNumber !== undefined ? rollNumber : current.rollNumber,
       classId: classId || current.classId,
       dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : current.dateOfBirth,
       gender: gender !== undefined ? gender : current.gender,
-      guardianName: guardianName !== undefined ? guardianName : current.guardianName,
-      guardianPhone: guardianPhone !== undefined ? guardianPhone : current.guardianPhone,
+      guardianName: guardianName !== undefined ? (guardianName ? guardianName.trim().replace(/\s+/g, ' ') : null) : current.guardianName,
+      guardianPhone: guardianPhone !== undefined ? (guardianPhone ? guardianPhone.trim().replace(/[\s\-()]/g, '') : null) : current.guardianPhone,
       active: active !== undefined ? Boolean(active) : current.active,
     },
     include: {
