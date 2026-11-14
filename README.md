@@ -76,7 +76,7 @@ All models are normalized in **Third Normal Form (3NF)**:
 7. `attendance_records`: Individual marked attendances with composite unique constraint `@@unique([sessionId, studentId])`, status (`PRESENT`, `ABSENT`, `LATE`), and method (`QR`, `MANUAL`, `OFFLINE_SYNC`).
 8. `audit_logs`: Administrative modification audit trail recording `actorId`, `previousValue`, `newValue`, and mandatory `reason`.
 
-For complete details, see [docs/database-schema.md](file:///Users/shivrajbissa/ShikshaTrack/docs/database-schema.md).
+For complete details, see [docs/database-schema.md](file:///Users/shivrajbissa/ShikshaTrack/docs/database-schema.md) and [docs/teacher-management-api.md](file:///Users/shivrajbissa/ShikshaTrack/docs/teacher-management-api.md).
 
 ---
 

@@ -42,7 +42,7 @@ export default function TeacherManagement() {
         api.get('/teachers'),
         api.get('/classes'),
       ]);
-      setTeachers(teachersRes.data);
+      setTeachers(Array.isArray(teachersRes.data) ? teachersRes.data : (teachersRes.data?.teachers || []));
       setClasses(classesRes.data);
       setError('');
     } catch (err) {

@@ -5,14 +5,25 @@ import { requireRole } from '../middleware/rbac.js';
 
 const router = Router();
 
+// Teacher management endpoints are strictly accessible by school ADMIN
 router.use(authenticateToken);
+router.use(requireRole('ADMIN'));
 
-// Teacher management is strictly for ADMIN
-router.get('/', requireRole('ADMIN'), teacherController.getTeachers);
-router.get('/:id', requireRole('ADMIN'), teacherController.getTeacher);
-router.post('/', requireRole('ADMIN'), teacherController.createTeacher);
-router.put('/:id/assignments', requireRole('ADMIN'), teacherController.updateTeacherAssignments);
-router.patch('/:id/toggle-status', requireRole('ADMIN'), teacherController.toggleTeacherStatus);
+// Teacher profile and collection routes
+router.get('/', teacherController.getTeachers);
+router.post('/', teacherController.createTeacher);
+router.get('/:id', teacherController.getTeacher);
+router.put('/:id', teacherController.updateTeacher);
+router.patch('/:id', teacherController.updateTeacher);
+router.delete('/:id', teacherController.deleteTeacher);
+
+// Teacher assigned classes & workload routes
+router.get('/:id/classes', teacherController.getTeacherClasses);
+router.put('/:id/assignments', teacherController.updateTeacherAssignments);
+router.post('/:id/assignments', teacherController.addTeacherAssignment);
+router.delete('/:id/assignments/:classId', teacherController.removeTeacherAssignment);
+
+// Status toggling
+router.patch('/:id/toggle-status', teacherController.toggleTeacherStatus);
 
 export default router;
-
