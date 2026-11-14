@@ -7,9 +7,14 @@ const router = Router();
 
 router.use(authenticateToken);
 
+// Existing dashboard endpoints
 router.get('/admin', requireRole('ADMIN'), analyticsController.getAdminStats);
 router.get('/teacher', analyticsController.getTeacherStats);
 router.get('/anomalies', requireRole('ADMIN'), analyticsController.getAnomalies);
 
-export default router;
+// Comprehensive student performance and attendance insights
+router.get('/students', analyticsController.getStudentInsights);
+router.get('/students/:id', analyticsController.getStudentDetailInsights);
+router.get('/cohorts', analyticsController.getCohortSummaries);
 
+export default router;

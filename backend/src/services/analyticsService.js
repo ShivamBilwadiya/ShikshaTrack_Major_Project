@@ -399,3 +399,567 @@ export const detectAttendanceAnomalies = async (schoolId) => {
   return anomalies;
 };
 
+/**
+ * Helper to compute trend and streak metrics from an ordered array of records (newest first)
+ */
+const computeStudentAttendanceMetrics = (records, threshold = 75) => {
+  const total = records.length;
+  if (total === 0) {
+    return {
+      totalSessions: 0,
+      presentCount: 0,
+      lateCount: 0,
+      absentCount: 0,
+      attendanceRate: 0,
+      consecutiveAbsences: 0,
+      maxConsecutiveAbsences: 0,
+      statusCategory: 'GOOD',
+      trend: {
+        direction: 'STABLE',
+        recentRate: 0,
+        priorRate: 0,
+        changePercent: 0,
+      },
+      insights: ['No attendance sessions recorded yet for this student.'],
+    };
+  }
+
+  let presentCount = 0;
+  let lateCount = 0;
+  let absentCount = 0;
+
+  // Streak tracking
+  let consecutiveAbsences = 0;
+  let streakActive = true;
+  let maxConsecutiveAbsences = 0;
+  let tempConsecutive = 0;
+
+  for (let i = 0; i < records.length; i++) {
+    const status = records[i].status;
+    if (status === 'PRESENT') {
+      presentCount++;
+      streakActive = false;
+      tempConsecutive = 0;
+    } else if (status === 'LATE') {
+      lateCount++;
+      streakActive = false;
+      tempConsecutive = 0;
+    } else if (status === 'ABSENT') {
+      absentCount++;
+      if (streakActive) consecutiveAbsences++;
+      tempConsecutive++;
+      if (tempConsecutive > maxConsecutiveAbsences) {
+        maxConsecutiveAbsences = tempConsecutive;
+      }
+    }
+  }
+
+  const effectivePresent = presentCount + lateCount;
+  const attendanceRate = Math.round((effectivePresent / total) * 1000) / 10;
+
+  // Trend analysis: compare recent 5 sessions with prior up to 10
+  const recentWindow = records.slice(0, 5);
+  const priorWindow = records.slice(5, 15);
+
+  const recentPresent = recentWindow.filter((r) => r.status === 'PRESENT' || r.status === 'LATE').length;
+  const recentRate = recentWindow.length > 0 ? Math.round((recentPresent / recentWindow.length) * 1000) / 10 : attendanceRate;
+
+  let priorRate = attendanceRate;
+  if (priorWindow.length > 0) {
+    const priorPresent = priorWindow.filter((r) => r.status === 'PRESENT' || r.status === 'LATE').length;
+    priorRate = Math.round((priorPresent / priorWindow.length) * 1000) / 10;
+  }
+
+  const changePercent = Math.round((recentRate - priorRate) * 10) / 10;
+  let direction = 'STABLE';
+  if (changePercent >= 8) direction = 'IMPROVING';
+  else if (changePercent <= -8) direction = 'DECLINING';
+
+  // Pattern categorization
+  let statusCategory = 'GOOD';
+  if (consecutiveAbsences >= 3 || (records.length >= 5 && recentWindow.filter((r) => r.status === 'ABSENT').length >= 4)) {
+    statusCategory = 'CONSISTENTLY_ABSENT';
+  } else if (attendanceRate < threshold) {
+    statusCategory = 'CHRONIC_LOW';
+  } else if (direction === 'DECLINING' && attendanceRate < 85) {
+    statusCategory = 'DECLINING';
+  } else if (direction === 'IMPROVING') {
+    statusCategory = 'IMPROVING';
+  } else if (absentCount >= 3 && Math.abs(changePercent) >= 15) {
+    statusCategory = 'IRREGULAR';
+  }
+
+  // Generate plain English insights
+  const insights = [];
+  if (consecutiveAbsences >= 3) {
+    insights.push(`Urgent: Student has been absent for ${consecutiveAbsences} consecutive sessions.`);
+  }
+
+  if (attendanceRate < threshold) {
+    insights.push(
+      `Attendance (${attendanceRate}%) is below the statutory ${threshold}% threshold required under the RTE Act.`
+    );
+  } else if (attendanceRate >= 90) {
+    insights.push(`Exemplary attendance: ${attendanceRate}% presence rate.`);
+  }
+
+  if (direction === 'IMPROVING') {
+    insights.push(`Positive trajectory: Attendance improved by +${changePercent}% over recent sessions.`);
+  } else if (direction === 'DECLINING') {
+    insights.push(`Noticeable decline: Attendance dropped by ${changePercent}% compared to previous weeks.`);
+  }
+
+  if (statusCategory === 'IRREGULAR') {
+    insights.push('Attendance shows irregular, sporadic attendance without long continuous presence.');
+  }
+
+  return {
+    totalSessions: total,
+    presentCount,
+    lateCount,
+    absentCount,
+    attendanceRate,
+    consecutiveAbsences,
+    maxConsecutiveAbsences,
+    statusCategory,
+    trend: {
+      direction,
+      recentRate,
+      priorRate,
+      changePercent,
+    },
+    insights,
+  };
+};
+
+/**
+ * Comprehensive Student Attendance Insights with Filtering, Search, and Pagination
+ */
+export const getStudentAttendanceInsights = async ({
+  schoolId,
+  classId,
+  threshold = 75,
+  status = 'ALL',
+  search,
+  startDate,
+  endDate,
+  page,
+  limit,
+  sortBy = 'attendanceRate',
+  sortOrder = 'asc',
+}) => {
+  const where = {
+    schoolId,
+    active: true,
+  };
+
+  if (classId) {
+    where.classId = classId;
+  }
+
+  if (search && search.trim()) {
+    const term = search.trim();
+    where.OR = [
+      { name: { contains: term, mode: 'insensitive' } },
+      { admissionNumber: { contains: term, mode: 'insensitive' } },
+      { rollNumber: { contains: term, mode: 'insensitive' } },
+    ];
+  }
+
+  // Date filters on sessions
+  const sessionDateFilter = {};
+  if (startDate) {
+    const s = new Date(startDate);
+    s.setHours(0, 0, 0, 0);
+    sessionDateFilter.gte = s;
+  }
+  if (endDate) {
+    const e = new Date(endDate);
+    e.setHours(23, 59, 59, 999);
+    sessionDateFilter.lte = e;
+  }
+
+  const recordWhere = Object.keys(sessionDateFilter).length > 0
+    ? { session: { sessionDate: sessionDateFilter } }
+    : undefined;
+
+  // Retrieve students with attendance records
+  const students = await prisma.student.findMany({
+    where,
+    select: {
+      id: true,
+      name: true,
+      admissionNumber: true,
+      rollNumber: true,
+      gender: true,
+      classId: true,
+      class: {
+        select: {
+          id: true,
+          name: true,
+          section: true,
+          academicYear: true,
+        },
+      },
+      attendanceRecords: {
+        where: recordWhere,
+        select: {
+          id: true,
+          status: true,
+          markedAt: true,
+          method: true,
+          session: {
+            select: {
+              id: true,
+              sessionDate: true,
+            },
+          },
+        },
+        orderBy: { markedAt: 'desc' },
+      },
+    },
+    orderBy: [{ classId: 'asc' }, { rollNumber: 'asc' }, { name: 'asc' }],
+  });
+
+  // Compute metrics for every student
+  let analyzed = students.map((s) => {
+    const metrics = computeStudentAttendanceMetrics(s.attendanceRecords, threshold);
+    return {
+      studentId: s.id,
+      name: s.name,
+      admissionNumber: s.admissionNumber,
+      rollNumber: s.rollNumber,
+      gender: s.gender,
+      class: s.class,
+      ...metrics,
+    };
+  });
+
+  // Filter by status category if requested
+  if (status && status !== 'ALL') {
+    const targetStatus = status.toUpperCase();
+    if (targetStatus === 'BELOW_THRESHOLD' || targetStatus === 'CHRONIC_LOW') {
+      analyzed = analyzed.filter((s) => s.attendanceRate < threshold);
+    } else {
+      analyzed = analyzed.filter((s) => s.statusCategory === targetStatus);
+    }
+  }
+
+  // Summary counts
+  const totalAnalyzed = analyzed.length;
+  let totalRateSum = 0;
+  let belowThresholdCount = 0;
+  let consistentlyAbsentCount = 0;
+  let irregularCount = 0;
+  let improvingCount = 0;
+  let decliningCount = 0;
+
+  analyzed.forEach((s) => {
+    totalRateSum += s.attendanceRate;
+    if (s.attendanceRate < threshold) belowThresholdCount++;
+    if (s.statusCategory === 'CONSISTENTLY_ABSENT') consistentlyAbsentCount++;
+    if (s.statusCategory === 'IRREGULAR') irregularCount++;
+    if (s.trend.direction === 'IMPROVING') improvingCount++;
+    if (s.trend.direction === 'DECLINING') decliningCount++;
+  });
+
+  const averageAttendance = totalAnalyzed > 0 ? Math.round((totalRateSum / totalAnalyzed) * 10) / 10 : 0;
+
+  // Sorting
+  const isDesc = sortOrder && sortOrder.toLowerCase() === 'desc';
+  analyzed.sort((a, b) => {
+    let cmp = 0;
+    if (sortBy === 'name') {
+      cmp = a.name.localeCompare(b.name);
+    } else if (sortBy === 'absentCount') {
+      cmp = a.absentCount - b.absentCount;
+    } else if (sortBy === 'changePercent') {
+      cmp = a.trend.changePercent - b.trend.changePercent;
+    } else {
+      // Default: attendanceRate
+      cmp = a.attendanceRate - b.attendanceRate;
+    }
+    return isDesc ? -cmp : cmp;
+  });
+
+  const summary = {
+    totalAnalyzed,
+    averageAttendance,
+    threshold,
+    belowThresholdCount,
+    consistentlyAbsentCount,
+    irregularCount,
+    improvingCount,
+    decliningCount,
+  };
+
+  // Pagination if requested
+  if (page !== undefined || limit !== undefined) {
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const skip = (pageNum - 1) * limitNum;
+    const paginatedStudents = analyzed.slice(skip, skip + limitNum);
+    const totalPages = Math.ceil(totalAnalyzed / limitNum);
+
+    return {
+      summary,
+      students: paginatedStudents,
+      pagination: {
+        total: totalAnalyzed,
+        page: pageNum,
+        limit: limitNum,
+        totalPages,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1,
+      },
+    };
+  }
+
+  return {
+    summary,
+    students: analyzed,
+  };
+};
+
+/**
+ * Get in-depth historical attendance and day-of-week analytics for single student
+ */
+export const getStudentDetailInsights = async ({ schoolId, studentId, threshold = 75 }) => {
+  const student = await prisma.student.findFirst({
+    where: { id: studentId, schoolId },
+    include: {
+      class: true,
+      attendanceRecords: {
+        include: {
+          session: true,
+        },
+        orderBy: { markedAt: 'desc' },
+      },
+    },
+  });
+
+  if (!student) {
+    const err = new Error('Student not found in this school.');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const records = student.attendanceRecords;
+  const overallMetrics = computeStudentAttendanceMetrics(records, threshold);
+
+  // 1. Day of Week Breakdown (Monday = 1 through Friday = 5)
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const dayBuckets = { 1: [], 2: [], 3: [], 4: [], 5: [] };
+
+  records.forEach((r) => {
+    const day = new Date(r.session.sessionDate).getDay();
+    if (dayBuckets[day]) {
+      dayBuckets[day].push(r);
+    }
+  });
+
+  const dayOfWeekAnalytics = [1, 2, 3, 4, 5].map((d) => {
+    const recs = dayBuckets[d] || [];
+    const total = recs.length;
+    const present = recs.filter((r) => r.status === 'PRESENT' || r.status === 'LATE').length;
+    const absent = recs.filter((r) => r.status === 'ABSENT').length;
+    const rate = total > 0 ? Math.round((present / total) * 1000) / 10 : 0;
+    return {
+      dayOfWeek: d,
+      dayName: dayNames[d],
+      totalSessions: total,
+      presentCount: present,
+      absentCount: absent,
+      attendanceRate: rate,
+    };
+  });
+
+  // 2. Monthly Trends (YYYY-MM)
+  const monthMap = new Map();
+  records.forEach((r) => {
+    const d = new Date(r.session.sessionDate);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const cur = monthMap.get(key) || { month: key, total: 0, present: 0, absent: 0 };
+    cur.total++;
+    if (r.status === 'PRESENT' || r.status === 'LATE') cur.present++;
+    else if (r.status === 'ABSENT') cur.absent++;
+    monthMap.set(key, cur);
+  });
+
+  const monthlyTrends = Array.from(monthMap.values())
+    .map((m) => ({
+      ...m,
+      rate: m.total > 0 ? Math.round((m.present / m.total) * 1000) / 10 : 0,
+    }))
+    .sort((a, b) => a.month.localeCompare(b.month));
+
+  // 3. Weekly Trends (Last 8 weeks)
+  const weekMap = new Map();
+  records.slice(0, 40).forEach((r) => {
+    const d = new Date(r.session.sessionDate);
+    const firstDayOfYear = new Date(d.getFullYear(), 0, 1);
+    const pastDaysOfYear = (d - firstDayOfYear) / 86400000;
+    const weekNum = Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
+    const weekKey = `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+    const cur = weekMap.get(weekKey) || { week: weekKey, total: 0, present: 0, absent: 0 };
+    cur.total++;
+    if (r.status === 'PRESENT' || r.status === 'LATE') cur.present++;
+    else if (r.status === 'ABSENT') cur.absent++;
+    weekMap.set(weekKey, cur);
+  });
+
+  const weeklyTrends = Array.from(weekMap.values())
+    .map((w) => ({
+      ...w,
+      rate: w.total > 0 ? Math.round((w.present / w.total) * 1000) / 10 : 0,
+    }))
+    .slice(-8);
+
+  // 4. Actionable recommendations
+  const recommendations = [];
+  if (overallMetrics.consecutiveAbsences >= 3) {
+    recommendations.push('Immediate home visit or telephone contact required by Class In-charge.');
+  }
+  if (overallMetrics.attendanceRate < threshold) {
+    recommendations.push(
+      `Issue standard low-attendance notice to guardian regarding ${threshold}% statutory compliance.`
+    );
+  }
+  const lowDay = dayOfWeekAnalytics.find((d) => d.totalSessions >= 3 && d.attendanceRate < 50);
+  if (lowDay) {
+    recommendations.push(
+      `Inquire regarding repeated absences on ${lowDay.dayName}s (attendance is ${lowDay.attendanceRate}%).`
+    );
+  }
+  if (recommendations.length === 0) {
+    recommendations.push('Maintain regular encouragement; student has good attendance standing.');
+  }
+
+  return {
+    student: {
+      id: student.id,
+      name: student.name,
+      admissionNumber: student.admissionNumber,
+      rollNumber: student.rollNumber,
+      gender: student.gender,
+      guardianName: student.guardianName,
+      guardianPhone: student.guardianPhone,
+      class: {
+        id: student.class.id,
+        name: student.class.name,
+        section: student.class.section,
+        academicYear: student.class.academicYear,
+      },
+    },
+    metrics: overallMetrics,
+    dayOfWeekAnalytics,
+    monthlyTrends,
+    weeklyTrends,
+    recommendations,
+  };
+};
+
+/**
+ * Cohort and class-wise attendance comparison summaries
+ */
+export const getCohortSummaries = async ({ schoolId, startDate, endDate, threshold = 75 }) => {
+  const sessionDateFilter = {};
+  if (startDate) {
+    const s = new Date(startDate);
+    s.setHours(0, 0, 0, 0);
+    sessionDateFilter.gte = s;
+  }
+  if (endDate) {
+    const e = new Date(endDate);
+    e.setHours(23, 59, 59, 999);
+    sessionDateFilter.lte = e;
+  }
+
+  const recordWhere = Object.keys(sessionDateFilter).length > 0
+    ? { sessionDate: sessionDateFilter }
+    : undefined;
+
+  const classes = await prisma.class.findMany({
+    where: { schoolId },
+    include: {
+      students: {
+        where: { active: true },
+        select: { id: true },
+      },
+      attendanceSessions: {
+        where: recordWhere,
+        include: {
+          attendanceRecords: {
+            select: { status: true, studentId: true },
+          },
+        },
+      },
+    },
+    orderBy: [{ name: 'asc' }, { section: 'asc' }],
+  });
+
+  const classComparisons = classes.map((cls) => {
+    let present = 0;
+    let late = 0;
+    let absent = 0;
+    const studentRecordMap = new Map();
+
+    cls.attendanceSessions.forEach((sess) => {
+      sess.attendanceRecords.forEach((rec) => {
+        if (rec.status === 'PRESENT') present++;
+        else if (rec.status === 'LATE') late++;
+        else if (rec.status === 'ABSENT') absent++;
+
+        const studentRecs = studentRecordMap.get(rec.studentId) || [];
+        studentRecs.push(rec.status);
+        studentRecordMap.set(rec.studentId, studentRecs);
+      });
+    });
+
+    const totalMarked = present + late + absent;
+    const rate = totalMarked > 0 ? Math.round(((present + late) / totalMarked) * 1000) / 10 : 0;
+
+    // Count students below threshold in this class
+    let belowThresholdCount = 0;
+    cls.students.forEach((s) => {
+      const recs = studentRecordMap.get(s.id) || [];
+      if (recs.length > 0) {
+        const studentPresent = recs.filter((st) => st === 'PRESENT' || st === 'LATE').length;
+        const studentRate = (studentPresent / recs.length) * 100;
+        if (studentRate < threshold) belowThresholdCount++;
+      }
+    });
+
+    let performanceTier = 'MODERATE';
+    if (rate >= 85) performanceTier = 'HIGH';
+    else if (rate < threshold) performanceTier = 'LOW';
+
+    return {
+      classId: cls.id,
+      className: `${cls.name}-${cls.section}`,
+      totalEnrolled: cls.students.length,
+      totalSessions: cls.attendanceSessions.length,
+      presentCount: present,
+      lateCount: late,
+      absentCount: absent,
+      attendanceRate: rate,
+      belowThresholdCount,
+      performanceTier,
+    };
+  });
+
+  // Sort by attendance rate descending
+  classComparisons.sort((a, b) => b.attendanceRate - a.attendanceRate);
+
+  return {
+    totalClasses: classes.length,
+    threshold,
+    dateRange: {
+      startDate: startDate || null,
+      endDate: endDate || null,
+    },
+    classComparisons,
+  };
+};
+
+
