@@ -197,6 +197,7 @@ All **21 automated tests** covering Authentication, Student CRUD, QR Attendance,
 
 Comprehensive academic documentation has been created inside `docs/`:
 
+- [docs/offline-sync-and-recovery-engine.md](file:///Users/shivrajbissa/ShikshaTrack/docs/offline-sync-and-recovery-engine.md): Offline attendance sync engine, persistent operation queue, exponential backoff, conflict arbitration, and crash recovery.
 - [docs/parent-portal-and-school-communication.md](file:///Users/shivrajbissa/ShikshaTrack/docs/parent-portal-and-school-communication.md): Parent portal dashboard, multi-child linking, school-wide circulars, staff-to-guardian direct messaging, and student leave requests.
 - [docs/school-fee-and-financial-management.md](file:///Users/shivrajbissa/ShikshaTrack/docs/school-fee-and-financial-management.md): Fee structures, installment scheduling, atomic receipting, payment reversals, and financial reports.
 - [docs/attendance-analytics-and-intelligence.md](file:///Users/shivrajbissa/ShikshaTrack/docs/attendance-analytics-and-intelligence.md): Advanced attendance intelligence, predictive trends, truancy detection, and class benchmarks.

@@ -63,6 +63,7 @@ model School {
   parents          Parent[]
   announcements    SchoolAnnouncement[]
   communicationMessages CommunicationMessage[]
+  syncOperations   SyncOperation[]
 
   @@map("schools")
 }
@@ -99,6 +100,8 @@ model User {
   sentMessages       CommunicationMessage[]  @relation("MessageSender")
   receivedMessages   CommunicationMessage[]  @relation("MessageReceiver")
   readAnnouncements  AnnouncementRead[]
+  syncOperations     SyncOperation[]
+  resolvedConflicts  SyncOperation[]         @relation("ConflictResolver")
 
   @@map("users")
 }
@@ -166,6 +169,7 @@ model Student {
   feePayments       FeePayment[]
   parentLinks       ParentStudent[]
   communicationMessages CommunicationMessage[]
+  syncOperations    SyncOperation[]
 
   @@unique([schoolId, admissionNumber])
   @@index([classId])
@@ -830,4 +834,40 @@ model CommunicationMessage {
   @@index([threadId])
   @@index([studentId])
   @@map("communication_messages")
+}
+
+enum SyncOperationStatus {
+  PENDING
+  SYNCING
+  SYNCED
+  FAILED
+  CONFLICT
+}
+
+model SyncOperation {
+  id           String              @id @default(uuid())
+  schoolId     String
+  school       School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  teacherId    String
+  teacher      User                @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  operationId  String              @unique
+  studentId    String?
+  student      Student?            @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  status       SyncOperationStatus @default(PENDING)
+  action       String              @default("MARK_ATTENDANCE")
+  payload      Json
+  retryCount   Int                 @default(0)
+  lastError    String?
+  conflictData Json?
+  resolvedAt   DateTime?
+  resolvedById String?
+  resolvedBy   User?               @relation("ConflictResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  processedAt  DateTime?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([schoolId, status])
+  @@index([teacherId, status])
+  @@index([operationId])
+  @@map("sync_operations")
 }
