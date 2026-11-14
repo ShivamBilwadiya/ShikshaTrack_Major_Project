@@ -64,6 +64,9 @@ model School {
   announcements    SchoolAnnouncement[]
   communicationMessages CommunicationMessage[]
   syncOperations   SyncOperation[]
+  studentDocuments StudentDocument[]
+  certificateTemplates CertificateTemplate[]
+  issuedCertificates IssuedCertificate[]
 
   @@map("schools")
 }
@@ -102,6 +105,12 @@ model User {
   readAnnouncements  AnnouncementRead[]
   syncOperations     SyncOperation[]
   resolvedConflicts  SyncOperation[]         @relation("ConflictResolver")
+  uploadedDocuments  StudentDocument[]       @relation("DocumentUploader")
+  verifiedDocuments  StudentDocument[]       @relation("DocumentVerifier")
+  uploadedDocVersions DocumentVersion[]      @relation("VersionUploader")
+  createdCertTemplates CertificateTemplate[] @relation("TemplateCreator")
+  issuedCertificates   IssuedCertificate[]   @relation("CertificateIssuer")
+  revokedCertificates  IssuedCertificate[]   @relation("CertificateRevoker")
 
   @@map("users")
 }
@@ -170,6 +179,8 @@ model Student {
   parentLinks       ParentStudent[]
   communicationMessages CommunicationMessage[]
   syncOperations    SyncOperation[]
+  studentDocuments  StudentDocument[]
+  issuedCertificates IssuedCertificate[]
 
   @@unique([schoolId, admissionNumber])
   @@index([classId])
@@ -870,4 +881,171 @@ model SyncOperation {
   @@index([teacherId, status])
   @@index([operationId])
   @@map("sync_operations")
+}
+
+enum DocumentCategory {
+  BIRTH_CERTIFICATE
+  TRANSFER_CERTIFICATE
+  IDENTITY_PROOF
+  ADDRESS_PROOF
+  ACADEMIC_RECORD
+  MEDICAL_RECORD
+  OTHER
+}
+
+enum DocumentVerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+enum CertificateType {
+  BONAFIDE
+  TRANSFER
+  CHARACTER
+  STUDY
+  FEE_CLEARANCE
+  ACHIEVEMENT
+  OTHER
+}
+
+enum CertificateStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+model StudentDocument {
+  id                String                     @id @default(uuid())
+  schoolId          String
+  school            School                     @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId         String
+  student           Student                    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  title             String
+  description       String?
+  category          DocumentCategory           @default(OTHER)
+  status            DocumentVerificationStatus @default(PENDING)
+  currentVersion    Int                        @default(1)
+  filePath          String
+  fileName          String
+  fileSize          Int
+  mimeType          String
+  fileHash          String?
+  issueDate         DateTime?
+  expiryDate        DateTime?
+  verifiedAt        DateTime?
+  verifiedById      String?
+  verifiedBy        User?                      @relation("DocumentVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+  verificationNotes String?
+  uploadedById      String
+  uploadedBy        User                       @relation("DocumentUploader", fields: [uploadedById], references: [id], onDelete: Cascade)
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+
+  versions          DocumentVersion[]
+
+  @@index([schoolId, studentId])
+  @@index([schoolId, category])
+  @@index([schoolId, status])
+  @@map("student_documents")
+}
+
+model DocumentVersion {
+  id            String          @id @default(uuid())
+  documentId    String
+  document      StudentDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  versionNumber Int
+  filePath      String
+  fileName      String
+  fileSize      Int
+  mimeType      String
+  fileHash      String?
+  changeReason  String?
+  uploadedById  String
+  uploadedBy    User            @relation("VersionUploader", fields: [uploadedById], references: [id], onDelete: Cascade)
+  createdAt     DateTime        @default(now())
+
+  @@unique([documentId, versionNumber])
+  @@index([documentId])
+  @@map("document_versions")
+}
+
+model CertificateTemplate {
+  id             String          @id @default(uuid())
+  schoolId       String
+  school         School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  name           String
+  type           CertificateType @default(BONAFIDE)
+  title          String
+  headerText     String?
+  bodyTemplate   String
+  footerText     String?
+  signatoryTitle String          @default("Principal / Head of Institution")
+  signatoryName  String?
+  watermarkText  String?
+  validityMonths Int?
+  active         Boolean         @default(true)
+  createdById    String
+  createdBy      User            @relation("TemplateCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  issuedCertificates IssuedCertificate[]
+
+  @@unique([schoolId, name])
+  @@index([schoolId, type, active])
+  @@map("certificate_templates")
+}
+
+model IssuedCertificate {
+  id                String                      @id @default(uuid())
+  schoolId          String
+  school            School                      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId         String
+  student           Student                     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  templateId        String?
+  template          CertificateTemplate?        @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  certificateNumber String                      @unique
+  verificationToken String                      @unique @default(uuid())
+  type              CertificateType
+  title             String
+  studentSnapshot   Json
+  certificateData   Json
+  signatoryTitle    String                      @default("Principal / Head of Institution")
+  signatoryName     String?
+  issueDate         DateTime                    @default(now())
+  expiryDate        DateTime?
+  status            CertificateStatus           @default(ACTIVE)
+  issuedById        String
+  issuedBy          User                        @relation("CertificateIssuer", fields: [issuedById], references: [id], onDelete: Cascade)
+  revokedAt         DateTime?
+  revokedById       String?
+  revokedBy         User?                       @relation("CertificateRevoker", fields: [revokedById], references: [id], onDelete: SetNull)
+  revocationReason  String?
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
+
+  verificationLogs  CertificateVerificationLog[]
+
+  @@index([schoolId, studentId])
+  @@index([schoolId, type])
+  @@index([schoolId, status])
+  @@index([certificateNumber])
+  @@index([verificationToken])
+  @@map("issued_certificates")
+}
+
+model CertificateVerificationLog {
+  id            String            @id @default(uuid())
+  certificateId String
+  certificate   IssuedCertificate @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+  ipAddress     String?
+  userAgent     String?
+  verifiedAt    DateTime          @default(now())
+  queryToken    String?
+  isValid       Boolean           @default(true)
+
+  @@index([certificateId])
+  @@map("certificate_verification_logs")
 }

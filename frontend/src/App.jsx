@@ -33,6 +33,9 @@ import Settings from './pages/Settings';
 import ParentDashboard from './pages/ParentDashboard';
 import ParentCommunication from './pages/ParentCommunication';
 import ParentManagement from './pages/ParentManagement';
+import DocumentManagement from './pages/DocumentManagement';
+import CertificateManagement from './pages/CertificateManagement';
+import PublicCertificateVerification from './pages/PublicCertificateVerification';
 
 // Route Guards
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -78,6 +81,10 @@ export default function App() {
           <Routes>
             {/* Public Login Route */}
             <Route path="/login" element={<Login />} />
+
+            {/* Public Certificate Verification Routes */}
+            <Route path="/verify-certificate" element={<PublicCertificateVerification />} />
+            <Route path="/verify-certificate/:tokenOrCertNo" element={<PublicCertificateVerification />} />
 
             {/* Authenticated Dashboard Shell */}
             <Route
@@ -145,6 +152,8 @@ export default function App() {
               <Route path="leaves" element={<LeaveManagement />} />
               <Route path="incidents" element={<StudentIncidentManagement />} />
               <Route path="fees" element={<FeeManagement />} />
+              <Route path="documents" element={<DocumentManagement />} />
+              <Route path="certificates" element={<CertificateManagement />} />
 
               {/* Parent Portal & Communication */}
               <Route

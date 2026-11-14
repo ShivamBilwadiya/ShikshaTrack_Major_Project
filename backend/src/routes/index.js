@@ -17,6 +17,8 @@ import incidentRoutes from './incidentRoutes.js';
 import feeRoutes from './feeRoutes.js';
 import parentRoutes from './parentRoutes.js';
 import communicationRoutes from './communicationRoutes.js';
+import documentRoutes from './documentRoutes.js';
+import certificateRoutes from './certificateRoutes.js';
 
 const router = Router();
 
@@ -49,6 +51,8 @@ router.use('/incidents', incidentRoutes);
 router.use('/fees', feeRoutes);
 router.use('/parents', parentRoutes);
 router.use('/communication', communicationRoutes);
+router.use('/documents', documentRoutes);
+router.use('/certificates', certificateRoutes);
 
 export default router;
 

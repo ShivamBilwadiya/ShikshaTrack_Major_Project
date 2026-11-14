@@ -31,6 +31,7 @@ import {
   Settings as SettingsIcon,
   MessageSquare,
   Heart,
+  FileBadge,
 } from 'lucide-react';
 
 export default function DashboardLayout() {
@@ -48,6 +49,8 @@ export default function DashboardLayout() {
   const navItems = user?.role === 'PARENT'
     ? [
         { label: 'Guardian Dashboard', path: '/parent/dashboard', icon: LayoutDashboard },
+        { label: 'Student Documents', path: '/documents', icon: FileBadge },
+        { label: 'Certificates Register', path: '/certificates', icon: Award },
         { label: 'School Communication', path: '/parent/communication', icon: MessageSquare },
         { label: 'Academic Calendar', path: '/calendar', icon: CalendarDays },
         { label: 'School Timetable', path: '/timetable', icon: CalendarDays },
@@ -59,6 +62,8 @@ export default function DashboardLayout() {
         { label: 'Class Management', path: '/classes', icon: Building2 },
         { label: 'Faculty Management', path: '/teachers', icon: Users },
         { label: 'Parent & Guardians', path: '/parents/manage', icon: Heart },
+        { label: 'Student Documents', path: '/documents', icon: FileBadge },
+        { label: 'Certificates Register', path: '/certificates', icon: Award },
         { label: 'School Communication', path: '/parent/communication', icon: MessageSquare },
         { label: 'School Timetable', path: '/timetable', icon: CalendarDays },
         { label: 'Academic Calendar', path: '/calendar', icon: CalendarDays },
@@ -80,6 +85,8 @@ export default function DashboardLayout() {
         { label: 'QR Live Scanner', path: '/attendance/scan', icon: ScanLine },
         { label: 'Manual Register', path: '/attendance/manual', icon: ClipboardCheck },
         { label: 'Attendance History', path: '/attendance/history', icon: History },
+        { label: 'Student Documents', path: '/documents', icon: FileBadge },
+        { label: 'Certificates Register', path: '/certificates', icon: Award },
         { label: 'Weekly Timetable', path: '/timetable', icon: CalendarDays },
         { label: 'Academic Calendar', path: '/calendar', icon: CalendarDays },
         { label: 'Exams & Marks Entry', path: '/exams', icon: Award },
