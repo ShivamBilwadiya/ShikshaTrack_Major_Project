@@ -9,6 +9,11 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 dotenv.config();
 
+if (process.env.NODE_ENV === 'test' && (process.env.LOCAL_DATABASE_URL || process.env.TEST_DATABASE_URL)) {
+  process.env.DATABASE_URL = process.env.LOCAL_DATABASE_URL || process.env.TEST_DATABASE_URL;
+  process.env.DIRECT_URL = process.env.LOCAL_DATABASE_URL || process.env.TEST_DATABASE_URL;
+}
+
 export const config = {
   port: process.env.PORT || 5050,
   nodeEnv: process.env.NODE_ENV || 'development',

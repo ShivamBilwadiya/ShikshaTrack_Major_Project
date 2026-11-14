@@ -16,7 +16,7 @@ Many rural schools in India continue to rely on manual paper attendance register
 
 ### Objectives
 1. **Automate student attendance** using fast, secure, cryptographic QR code scanning via standard mobile/laptop cameras.
-2. **Digitize student, faculty, and class management** with a modern, high-performance web dashboard.
+2. **Digitize student, faculty, class, and timetable scheduling** with a modern, high-performance web dashboard with automated conflict detection.
 3. **Guarantee offline attendance support** in low-connectivity rural regions via Progressive Web App (PWA) caching and client-side IndexedDB synchronization.
 4. **Generate automated governance reports**, including daily registers, monthly trends, low-attendance alert lists (< 75% RTE threshold), and physical Mid-Day Meal headcounts.
 5. **Provide AI-powered administrative insights** and a natural-language query interface ("Ask ShikshaTrack") with verified, non-destructive database query execution.
@@ -197,6 +197,8 @@ All **21 automated tests** covering Authentication, Student CRUD, QR Attendance,
 
 Comprehensive academic documentation has been created inside `docs/`:
 
+- [docs/school-timetable-and-scheduling.md](file:///Users/shivrajbissa/ShikshaTrack/docs/school-timetable-and-scheduling.md): School timetable, period management, and faculty conflict detection.
+- [docs/school-notifications-and-alerts.md](file:///Users/shivrajbissa/ShikshaTrack/docs/school-notifications-and-alerts.md): School notifications, proactive attendance alerts, and dismissal lifecycle.
 - [docs/team-contribution-matrix.md](file:///Users/shivrajbissa/ShikshaTrack/docs/team-contribution-matrix.md): Cross-functional ownership mapping Member 1, Member 2, and Member 3 across DE, ASD, and ISD.
 - [docs/viva-preparation.md](file:///Users/shivrajbissa/ShikshaTrack/docs/viva-preparation.md): In-depth Q&A for DE, ASD, and ISD, plus 3 separate member practice defense sections.
 - [docs/asd-concept-mapping.md](file:///Users/shivrajbissa/ShikshaTrack/docs/asd-concept-mapping.md): Complete Node.js syllabus concept mapping with exact code references.

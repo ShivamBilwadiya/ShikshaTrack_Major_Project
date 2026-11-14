@@ -47,10 +47,11 @@ model School {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  users         User[]
-  classes       Class[]
-  students      Student[]
-  notifications Notification[]
+  users            User[]
+  classes          Class[]
+  students         Student[]
+  notifications    Notification[]
+  timetableEntries TimetableEntry[]
 
   @@map("schools")
 }
@@ -71,6 +72,7 @@ model User {
   attendanceSessions AttendanceSession[]
   auditLogs          AuditLog[]
   notifications      Notification[]
+  timetableEntries   TimetableEntry[]
 
   @@map("users")
 }
@@ -88,6 +90,7 @@ model Class {
   students           Student[]
   teacherAssignments TeacherAssignment[]
   attendanceSessions AttendanceSession[]
+  timetableEntries   TimetableEntry[]
 
   @@unique([schoolId, name, section, academicYear])
   @@map("classes")
@@ -208,4 +211,37 @@ model Notification {
   @@index([schoolId, category])
   @@index([schoolId, createdAt])
   @@map("notifications")
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+}
+
+model TimetableEntry {
+  id           String    @id @default(uuid())
+  schoolId     String
+  school       School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  classId      String
+  class        Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
+  teacherId    String
+  teacher      User      @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  subject      String
+  dayOfWeek    DayOfWeek
+  startTime    String    // 24-hr format "HH:mm" e.g. "09:00"
+  endTime      String    // 24-hr format "HH:mm" e.g. "09:45"
+  roomNumber   String?   // optional room e.g. "Room 101"
+  academicYear String?   // optional e.g. "2026-2027"
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([schoolId, classId, dayOfWeek])
+  @@index([schoolId, teacherId, dayOfWeek])
+  @@index([schoolId, dayOfWeek])
+  @@map("timetable_entries")
 }

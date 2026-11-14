@@ -9,6 +9,7 @@ import analyticsRoutes from './analyticsRoutes.js';
 import aiRoutes from './aiRoutes.js';
 import syncRoutes from './syncRoutes.js';
 import notificationRoutes from './notificationRoutes.js';
+import timetableRoutes from './timetableRoutes.js';
 
 const router = Router();
 
@@ -33,6 +34,7 @@ router.use('/analytics', analyticsRoutes);
 router.use('/ai', aiRoutes);
 router.use('/sync', syncRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/timetable', timetableRoutes);
 
 export default router;
 
