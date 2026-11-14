@@ -18,6 +18,7 @@ import AcademicCalendar from './pages/AcademicCalendar';
 import ExaminationManagement from './pages/ExaminationManagement';
 import LeaveManagement from './pages/LeaveManagement';
 import StudentIncidentManagement from './pages/StudentIncidentManagement';
+import FeeManagement from './pages/FeeManagement';
 import QrIdCards from './pages/QrIdCards';
 import QrAttendanceScanner from './pages/QrAttendanceScanner';
 import ManualAttendance from './pages/ManualAttendance';
@@ -138,6 +139,7 @@ export default function App() {
               <Route path="exams" element={<ExaminationManagement />} />
               <Route path="leaves" element={<LeaveManagement />} />
               <Route path="incidents" element={<StudentIncidentManagement />} />
+              <Route path="fees" element={<FeeManagement />} />
 
               {/* QR ID Cards Print Sheet */}
               <Route path="qr-cards" element={<QrIdCards />} />

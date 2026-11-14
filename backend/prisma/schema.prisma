@@ -56,6 +56,9 @@ model School {
   examinations     Examination[]
   studentLeaves    StudentLeave[]
   studentIncidents StudentIncident[]
+  feeStructures    FeeStructure[]
+  studentFees      StudentFee[]
+  feePayments      FeePayment[]
 
   @@map("schools")
 }
@@ -83,6 +86,10 @@ model User {
   reportedIncidents  StudentIncident[]       @relation("IncidentReporter")
   resolvedIncidents  StudentIncident[]       @relation("IncidentResolver")
   incidentActions    IncidentActionHistory[]
+  recordedFeePayments FeePayment[]           @relation("FeeCollector")
+  reversedFeePayments FeePayment[]           @relation("FeeReverser")
+  approvedDiscounts  FeeDiscount[]           @relation("DiscountApprover")
+  approvedReversals  PaymentReversal[]       @relation("ReversalApprover")
 
   @@map("users")
 }
@@ -104,6 +111,7 @@ model Class {
   examinations       Examination[]
   studentLeaves      StudentLeave[]
   studentIncidents   StudentIncident[]
+  feeStructures      FeeStructure[]
 
   @@unique([schoolId, name, section, academicYear])
   @@map("classes")
@@ -144,6 +152,8 @@ model Student {
   examMarks         ExamMark[]
   studentLeaves     StudentLeave[]
   studentIncidents  StudentIncident[]
+  studentFees       StudentFee[]
+  feePayments       FeePayment[]
 
   @@unique([schoolId, admissionNumber])
   @@index([classId])
@@ -478,4 +488,185 @@ model IncidentActionHistory {
 
   @@index([incidentId])
   @@map("incident_action_history")
+}
+
+enum FeeCategory {
+  TUITION
+  TRANSPORT
+  EXAMINATION
+  LIBRARY
+  DEVELOPMENT
+  OTHER
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  UPI
+  CHEQUE
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+model FeeStructure {
+  id           String       @id @default(uuid())
+  schoolId     String
+  school       School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  classId      String?
+  class        Class?       @relation(fields: [classId], references: [id], onDelete: Cascade)
+  name         String       // e.g. "Annual Tuition Fee 2026-2027"
+  academicYear String       // e.g. "2026-2027"
+  category     FeeCategory  @default(TUITION)
+  totalAmount  Float        // base amount
+  isOptional   Boolean      @default(false)
+  frequency    String       @default("ANNUAL") // "ANNUAL", "TERMLY", "MONTHLY", "ONE_TIME"
+  description  String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  studentFees  StudentFee[]
+
+  @@index([schoolId, academicYear])
+  @@index([schoolId, classId])
+  @@map("fee_structures")
+}
+
+model StudentFee {
+  id                String            @id @default(uuid())
+  schoolId          String
+  school            School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId         String
+  student           Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  feeStructureId    String
+  feeStructure      FeeStructure      @relation(fields: [feeStructureId], references: [id], onDelete: Cascade)
+  academicYear      String
+  originalAmount    Float
+  discountAmount    Float             @default(0)
+  scholarshipAmount Float             @default(0)
+  netAmount         Float
+  paidAmount        Float             @default(0)
+  balanceAmount     Float
+  status            PaymentStatus     @default(PENDING)
+  remarks           String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  installments      FeeInstallment[]
+  payments          FeePayment[]
+  discounts         FeeDiscount[]
+
+  @@unique([studentId, feeStructureId])
+  @@index([schoolId, status])
+  @@index([schoolId, academicYear])
+  @@map("student_fees")
+}
+
+model FeeInstallment {
+  id                String              @id @default(uuid())
+  studentFeeId      String
+  studentFee        StudentFee          @relation(fields: [studentFeeId], references: [id], onDelete: Cascade)
+  installmentNumber Int
+  title             String              // e.g. "Installment 1"
+  amount            Float
+  dueDate           DateTime
+  paidAmount        Float               @default(0)
+  balanceAmount     Float
+  status            PaymentStatus       @default(PENDING)
+  paidAt            DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  allocations       PaymentAllocation[]
+
+  @@unique([studentFeeId, installmentNumber])
+  @@index([studentFeeId, dueDate])
+  @@map("fee_installments")
+}
+
+model FeePayment {
+  id                   String              @id @default(uuid())
+  schoolId             String
+  school               School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentFeeId         String
+  studentFee           StudentFee          @relation(fields: [studentFeeId], references: [id], onDelete: Cascade)
+  studentId            String
+  student              Student             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  receiptNumber        String              @unique
+  amountPaid           Float
+  paymentMethod        PaymentMethod       @default(CASH)
+  transactionReference String?
+  remarks              String?
+  paymentDate          DateTime            @default(now())
+  recordedById         String?
+  recordedBy           User?               @relation(name: "FeeCollector", fields: [recordedById], references: [id], onDelete: SetNull)
+  isReversed           Boolean             @default(false)
+  reversedAt           DateTime?
+  reversedById         String?
+  reversedBy           User?               @relation(name: "FeeReverser", fields: [reversedById], references: [id], onDelete: SetNull)
+  reversalReason       String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  allocations          PaymentAllocation[]
+  reversals            PaymentReversal[]
+
+  @@index([schoolId, paymentDate])
+  @@index([studentId, paymentDate])
+  @@index([receiptNumber])
+  @@map("fee_payments")
+}
+
+model PaymentAllocation {
+  id               String         @id @default(uuid())
+  feePaymentId     String
+  feePayment       FeePayment     @relation(fields: [feePaymentId], references: [id], onDelete: Cascade)
+  feeInstallmentId String
+  feeInstallment   FeeInstallment @relation(fields: [feeInstallmentId], references: [id], onDelete: Cascade)
+  allocatedAmount  Float
+  createdAt        DateTime       @default(now())
+
+  @@index([feePaymentId])
+  @@index([feeInstallmentId])
+  @@map("payment_allocations")
+}
+
+model FeeDiscount {
+  id           String       @id @default(uuid())
+  studentFeeId String
+  studentFee   StudentFee   @relation(fields: [studentFeeId], references: [id], onDelete: Cascade)
+  discountType DiscountType @default(FIXED_AMOUNT)
+  value        Float
+  amount       Float
+  reason       String
+  approvedById String?
+  approvedBy   User?        @relation(name: "DiscountApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime     @default(now())
+
+  @@index([studentFeeId])
+  @@map("fee_discounts")
+}
+
+model PaymentReversal {
+  id           String     @id @default(uuid())
+  feePaymentId String
+  feePayment   FeePayment @relation(fields: [feePaymentId], references: [id], onDelete: Cascade)
+  approvedById String?
+  approvedBy   User?      @relation(name: "ReversalApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  reason       String
+  reversedAt   DateTime   @default(now())
+  createdAt    DateTime   @default(now())
+
+  @@index([feePaymentId])
+  @@map("payment_reversals")
 }
