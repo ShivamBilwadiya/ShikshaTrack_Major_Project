@@ -86,8 +86,12 @@ export default function AttendanceReports() {
     else if (activeTab === 'meal') fetchMeal();
   }, [activeTab, reportDate]);
 
-  const handleExportCsv = () => {
-    window.open(`/api/v1/reports/daily/csv?date=${reportDate}`, '_blank');
+  const handleExportCsv = (view = 'detailed') => {
+    const params = new URLSearchParams({ date: reportDate });
+    if (view === 'summary') {
+      params.append('view', 'summary');
+    }
+    window.open(`/api/v1/reports/daily/csv?${params.toString()}`, '_blank');
   };
 
   return (
@@ -114,13 +118,24 @@ export default function AttendanceReports() {
             />
           )}
 
-          <button
-            onClick={handleExportCsv}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 shadow-xs transition"
-          >
-            <Download size={14} />
-            <span>Export CSV</span>
-          </button>
+          <div className="flex items-center space-x-1">
+            <button
+              onClick={() => handleExportCsv('detailed')}
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 shadow-xs transition"
+              title="Export detailed student-level attendance register CSV"
+            >
+              <Download size={14} />
+              <span>Export CSV</span>
+            </button>
+            <button
+              onClick={() => handleExportCsv('summary')}
+              className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100 transition"
+              title="Export class summary totals CSV"
+            >
+              <FileSpreadsheet size={13} />
+              <span>Summary</span>
+            </button>
+          </div>
 
           <button
             onClick={() => window.print()}

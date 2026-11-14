@@ -283,3 +283,91 @@ export const getMidDayMealReport = async ({ schoolId, startDate, endDate }) => {
   };
 };
 
+/**
+ * Detailed Attendance Export Data (Student-level attendance records)
+ */
+export const getDetailedAttendanceReport = async ({
+  schoolId,
+  date,
+  startDate,
+  endDate,
+  classId = null,
+  status = null,
+}) => {
+  let rangeStart;
+  let rangeEnd;
+
+  if (startDate || endDate) {
+    rangeStart = startDate ? new Date(startDate) : new Date('2000-01-01');
+    rangeStart.setHours(0, 0, 0, 0);
+    rangeEnd = endDate ? new Date(endDate) : new Date();
+    rangeEnd.setHours(23, 59, 59, 999);
+  } else {
+    const targetDate = date ? new Date(date) : new Date();
+    rangeStart = new Date(targetDate);
+    rangeStart.setHours(0, 0, 0, 0);
+    rangeEnd = new Date(targetDate);
+    rangeEnd.setHours(23, 59, 59, 999);
+  }
+
+  const sessionWhere = {
+    class: { schoolId },
+    sessionDate: { gte: rangeStart, lte: rangeEnd },
+  };
+
+  if (classId) {
+    sessionWhere.classId = classId;
+  }
+
+  const recordWhere = {};
+  if (status) {
+    recordWhere.status = status.toUpperCase();
+  }
+
+  const sessions = await prisma.attendanceSession.findMany({
+    where: sessionWhere,
+    include: {
+      class: true,
+      teacher: { select: { name: true } },
+      attendanceRecords: {
+        where: Object.keys(recordWhere).length > 0 ? recordWhere : undefined,
+        include: {
+          student: true,
+        },
+        orderBy: [{ student: { rollNumber: 'asc' } }, { student: { name: 'asc' } }],
+      },
+    },
+    orderBy: [{ sessionDate: 'asc' }, { class: { name: 'asc' } }],
+  });
+
+  const records = [];
+  sessions.forEach((sess) => {
+    const dateStr = sess.sessionDate.toISOString().split('T')[0];
+    const className = `${sess.class.name}-${sess.class.section}`;
+
+    sess.attendanceRecords.forEach((rec) => {
+      records.push({
+        studentName: rec.student.name,
+        admissionNumber: rec.student.admissionNumber,
+        className,
+        rollNumber: rec.student.rollNumber || 'N/A',
+        attendanceDate: dateStr,
+        status: rec.status,
+        method: rec.method,
+        remarks: rec.remarks || '',
+        teacherName: sess.teacher.name,
+      });
+    });
+  });
+
+  return {
+    date: rangeStart.toISOString().split('T')[0],
+    startDate: rangeStart.toISOString().split('T')[0],
+    endDate: rangeEnd.toISOString().split('T')[0],
+    classId,
+    status,
+    totalRecords: records.length,
+    records,
+  };
+};
+

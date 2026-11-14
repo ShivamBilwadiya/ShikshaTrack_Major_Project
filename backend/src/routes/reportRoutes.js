@@ -8,6 +8,7 @@ router.use(authenticateToken);
 
 router.get('/daily', reportController.getDailyReport);
 router.get('/daily/csv', reportController.exportDailyCsv);
+router.get('/attendance/csv', reportController.exportAttendanceCsv);
 router.get('/monthly', reportController.getMonthlyReport);
 router.get('/low-attendance', reportController.getLowAttendance);
 router.get('/mid-day-meal', reportController.getMidDayMealReport);

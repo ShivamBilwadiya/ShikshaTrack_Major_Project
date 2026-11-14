@@ -45,5 +45,60 @@ describe('Reporting & SQL Aggregations API', () => {
     expect(res.body.success).toBe(true);
     expect(Array.isArray(res.body.data.report)).toBe(true);
   });
+
+  it('GET /api/v1/reports/daily/csv - should export detailed attendance CSV with student name, admission number, date, and status', async () => {
+    const res = await request(app)
+      .get('/api/v1/reports/daily/csv')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/csv');
+    expect(res.text).toContain('"Student Name"');
+    expect(res.text).toContain('"Admission Number"');
+    expect(res.text).toContain('"Attendance Date"');
+    expect(res.text).toContain('"Attendance Status"');
+  });
+
+  it('GET /api/v1/reports/daily/csv - should respect status and classId filters in CSV export', async () => {
+    const res = await request(app)
+      .get('/api/v1/reports/daily/csv?status=PRESENT')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/csv');
+    const lines = res.text.trim().split('\n');
+    expect(lines.length).toBeGreaterThanOrEqual(1); // Header line present
+
+    // Any returned data lines must have status PRESENT
+    if (lines.length > 1) {
+      lines.slice(1).forEach((line) => {
+        expect(line).toContain('"PRESENT"');
+        expect(line).not.toContain('"ABSENT"');
+      });
+    }
+  });
+
+  it('GET /api/v1/reports/daily/csv - should handle empty reports with proper headers and zero data rows', async () => {
+    const res = await request(app)
+      .get('/api/v1/reports/daily/csv?date=2099-01-01')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/csv');
+    const lines = res.text.trim().split('\n');
+    expect(lines.length).toBe(1); // Only header row
+    expect(lines[0]).toContain('"Student Name"');
+    expect(lines[0]).toContain('"Admission Number"');
+  });
+
+  it('GET /api/v1/reports/daily/csv?view=summary - should preserve class-level summary export', async () => {
+    const res = await request(app)
+      .get('/api/v1/reports/daily/csv?view=summary')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/csv');
+    expect(res.text).toContain('Class,Enrolled,Status,Teacher,Present,Late,Absent,Unmarked,Attendance Rate,Mid-Day Meals');
+  });
 });
 

@@ -57,24 +57,66 @@ export const getMidDayMealReport = async (req, res, next) => {
   }
 };
 
+export const escapeCsvField = (value) => {
+  if (value === null || value === undefined) return '""';
+  const str = String(value);
+  const escaped = str.replace(/"/g, '""');
+  return `"${escaped}"`;
+};
+
 export const exportDailyCsv = async (req, res, next) => {
   try {
-    const { date } = req.query;
-    const report = await reportService.getDailyReport({
+    const { date, startDate, endDate, classId, status, view } = req.query;
+
+    if (view === 'summary') {
+      const report = await reportService.getDailyReport({
+        schoolId: req.user.schoolId,
+        date,
+      });
+
+      let csv = 'Class,Enrolled,Status,Teacher,Present,Late,Absent,Unmarked,Attendance Rate,Mid-Day Meals\n';
+      report.classReports.forEach((c) => {
+        csv += `${escapeCsvField(c.className)},${c.enrolled},${escapeCsvField(c.sessionStatus)},${escapeCsvField(
+          c.teacherName || 'N/A'
+        )},${c.present},${c.late},${c.absent},${c.unmarked},${escapeCsvField(`${c.attendanceRate}%`)},${c.midDayMealCount}\n`;
+      });
+
+      res.header('Content-Type', 'text/csv');
+      res.attachment(`ShikshaTrack_Daily_Summary_${report.date}.csv`);
+      return res.send(csv);
+    }
+
+    // Default: Detailed Student Attendance CSV Export
+    const detailedReport = await reportService.getDetailedAttendanceReport({
       schoolId: req.user.schoolId,
       date,
+      startDate,
+      endDate,
+      classId,
+      status,
     });
 
-    let csv = 'Class,Enrolled,Status,Teacher,Present,Late,Absent,Unmarked,Attendance Rate,Mid-Day Meals\n';
-    report.classReports.forEach((c) => {
-      csv += `"${c.className}",${c.enrolled},"${c.sessionStatus}","${c.teacherName || 'N/A'}",${c.present},${c.late},${c.absent},${c.unmarked},"${c.attendanceRate}%",${c.midDayMealCount}\n`;
+    let csv = '"Student Name","Admission Number","Class","Roll Number","Attendance Date","Attendance Status","Method","Remarks"\n';
+    detailedReport.records.forEach((r) => {
+      csv += `${escapeCsvField(r.studentName)},${escapeCsvField(r.admissionNumber)},${escapeCsvField(
+        r.className
+      )},${escapeCsvField(r.rollNumber)},${escapeCsvField(r.attendanceDate)},${escapeCsvField(
+        r.status
+      )},${escapeCsvField(r.method)},${escapeCsvField(r.remarks)}\n`;
     });
+
+    const fileDate = detailedReport.date || 'Export';
+    const filename = `ShikshaTrack_Attendance_${fileDate}${classId ? `_class_${classId}` : ''}${
+      status ? `_${status}` : ''
+    }.csv`;
 
     res.header('Content-Type', 'text/csv');
-    res.attachment(`ShikshaTrack_Daily_Report_${report.date}.csv`);
+    res.attachment(filename);
     return res.send(csv);
   } catch (err) {
     next(err);
   }
 };
+
+export const exportAttendanceCsv = exportDailyCsv;
 
