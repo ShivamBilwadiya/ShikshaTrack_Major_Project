@@ -67,6 +67,7 @@ model School {
   studentDocuments StudentDocument[]
   certificateTemplates CertificateTemplate[]
   issuedCertificates IssuedCertificate[]
+  academicInterventions AcademicIntervention[]
 
   @@map("schools")
 }
@@ -111,6 +112,10 @@ model User {
   createdCertTemplates CertificateTemplate[] @relation("TemplateCreator")
   issuedCertificates   IssuedCertificate[]   @relation("CertificateIssuer")
   revokedCertificates  IssuedCertificate[]   @relation("CertificateRevoker")
+  createdInterventions AcademicIntervention[] @relation("InterventionCreator")
+  assignedInterventions AcademicIntervention[] @relation("InterventionAssignee")
+  resolvedInterventions AcademicIntervention[] @relation("InterventionResolver")
+  interventionNotes    AcademicInterventionNote[]
 
   @@map("users")
 }
@@ -181,6 +186,7 @@ model Student {
   syncOperations    SyncOperation[]
   studentDocuments  StudentDocument[]
   issuedCertificates IssuedCertificate[]
+  academicInterventions AcademicIntervention[]
 
   @@unique([schoolId, admissionNumber])
   @@index([classId])
@@ -1048,4 +1054,79 @@ model CertificateVerificationLog {
 
   @@index([certificateId])
   @@map("certificate_verification_logs")
+}
+
+enum InterventionType {
+  ACADEMIC_DEFICIT
+  EXAM_DECLINE
+  ATTENDANCE_CORRELATION
+  BEHAVIORAL
+  SUBJECT_SPECIFIC
+  OTHER
+}
+
+enum InterventionSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum InterventionStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  ESCALATED
+  CANCELLED
+}
+
+model AcademicIntervention {
+  id                  String               @id @default(uuid())
+  schoolId            String
+  school              School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId           String
+  student             Student              @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  teacherId           String
+  teacher             User                 @relation("InterventionCreator", fields: [teacherId], references: [id], onDelete: Cascade)
+  assignedToId        String?
+  assignedTo          User?                @relation("InterventionAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  type                InterventionType     @default(ACADEMIC_DEFICIT)
+  severity            InterventionSeverity @default(MEDIUM)
+  status              InterventionStatus   @default(OPEN)
+  title               String
+  description         String
+  subject             String?
+  actionPlan          String?
+  baselinePercentage  Float?
+  targetPercentage    Float?
+  currentPercentage   Float?
+  baselineAttendance  Float?
+  followUpDate        DateTime?
+  resolvedAt          DateTime?
+  resolvedById        String?
+  resolvedBy          User?                @relation("InterventionResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  resolutionNotes     String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  notes               AcademicInterventionNote[]
+
+  @@index([schoolId, studentId])
+  @@index([schoolId, status])
+  @@index([schoolId, severity])
+  @@map("academic_interventions")
+}
+
+model AcademicInterventionNote {
+  id             String               @id @default(uuid())
+  interventionId String
+  intervention   AcademicIntervention @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+  authorId       String
+  author         User                 @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  note           String
+  progressMetric Float?
+  createdAt      DateTime             @default(now())
+
+  @@index([interventionId])
+  @@map("academic_intervention_notes")
 }

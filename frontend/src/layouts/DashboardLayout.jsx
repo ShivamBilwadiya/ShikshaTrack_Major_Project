@@ -49,6 +49,7 @@ export default function DashboardLayout() {
   const navItems = user?.role === 'PARENT'
     ? [
         { label: 'Guardian Dashboard', path: '/parent/dashboard', icon: LayoutDashboard },
+        { label: 'Academic Performance', path: '/performance', icon: TrendingUp },
         { label: 'Student Documents', path: '/documents', icon: FileBadge },
         { label: 'Certificates Register', path: '/certificates', icon: Award },
         { label: 'School Communication', path: '/parent/communication', icon: MessageSquare },
@@ -68,6 +69,7 @@ export default function DashboardLayout() {
         { label: 'School Timetable', path: '/timetable', icon: CalendarDays },
         { label: 'Academic Calendar', path: '/calendar', icon: CalendarDays },
         { label: 'Examinations & Marks', path: '/exams', icon: Award },
+        { label: 'Academic Performance', path: '/performance', icon: TrendingUp },
         { label: 'Student Leaves', path: '/leaves', icon: CalendarCheck },
         { label: 'Discipline & Incidents', path: '/incidents', icon: ShieldAlert },
         { label: 'Fee & Billing', path: '/fees', icon: CreditCard },
@@ -90,6 +92,7 @@ export default function DashboardLayout() {
         { label: 'Weekly Timetable', path: '/timetable', icon: CalendarDays },
         { label: 'Academic Calendar', path: '/calendar', icon: CalendarDays },
         { label: 'Exams & Marks Entry', path: '/exams', icon: Award },
+        { label: 'Academic Performance', path: '/performance', icon: TrendingUp },
         { label: 'Student Leaves', path: '/leaves', icon: CalendarCheck },
         { label: 'Discipline & Incidents', path: '/incidents', icon: ShieldAlert },
         { label: 'Fee & Billing', path: '/fees', icon: CreditCard },

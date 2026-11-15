@@ -36,6 +36,7 @@ import ParentManagement from './pages/ParentManagement';
 import DocumentManagement from './pages/DocumentManagement';
 import CertificateManagement from './pages/CertificateManagement';
 import PublicCertificateVerification from './pages/PublicCertificateVerification';
+import StudentPerformanceAnalytics from './pages/StudentPerformanceAnalytics';
 
 // Route Guards
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -154,6 +155,7 @@ export default function App() {
               <Route path="fees" element={<FeeManagement />} />
               <Route path="documents" element={<DocumentManagement />} />
               <Route path="certificates" element={<CertificateManagement />} />
+              <Route path="performance" element={<StudentPerformanceAnalytics />} />
 
               {/* Parent Portal & Communication */}
               <Route

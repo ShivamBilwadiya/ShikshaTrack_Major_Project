@@ -19,6 +19,7 @@ import parentRoutes from './parentRoutes.js';
 import communicationRoutes from './communicationRoutes.js';
 import documentRoutes from './documentRoutes.js';
 import certificateRoutes from './certificateRoutes.js';
+import performanceRoutes from './performanceRoutes.js';
 
 const router = Router();
 
@@ -53,6 +54,7 @@ router.use('/parents', parentRoutes);
 router.use('/communication', communicationRoutes);
 router.use('/documents', documentRoutes);
 router.use('/certificates', certificateRoutes);
+router.use('/performance', performanceRoutes);
 
 export default router;
 
