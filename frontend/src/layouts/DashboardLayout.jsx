@@ -32,6 +32,7 @@ import {
   MessageSquare,
   Heart,
   FileBadge,
+  ShieldCheck,
 } from 'lucide-react';
 
 export default function DashboardLayout() {
@@ -80,6 +81,7 @@ export default function DashboardLayout() {
         { label: 'AI Insights & Anomaly', path: '/ai-insights', icon: BrainCircuit },
         { label: 'AI Report Generator', path: '/ai-reports', icon: FileSpreadsheet },
         { label: 'Offline Sync Center', path: '/sync', icon: CloudOff, badge: pendingCount },
+        { label: 'System Administration', path: '/admin/system', icon: ShieldCheck },
         { label: 'System Settings', path: '/settings', icon: SettingsIcon },
       ]
     : [

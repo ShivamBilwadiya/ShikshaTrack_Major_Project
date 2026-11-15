@@ -37,6 +37,7 @@ import DocumentManagement from './pages/DocumentManagement';
 import CertificateManagement from './pages/CertificateManagement';
 import PublicCertificateVerification from './pages/PublicCertificateVerification';
 import StudentPerformanceAnalytics from './pages/StudentPerformanceAnalytics';
+import SystemAdministration from './pages/SystemAdministration';
 
 // Route Guards
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -212,6 +213,16 @@ export default function App() {
 
               {/* Settings & Info */}
               <Route path="settings" element={<Settings />} />
+
+              {/* System Administration & Audit Dashboard (Admin only) */}
+              <Route
+                path="admin/system"
+                element={
+                  <ProtectedRoute allowedRoles={['ADMIN']}>
+                    <SystemAdministration />
+                  </ProtectedRoute>
+                }
+              />
             </Route>
 
             {/* Fallback */}

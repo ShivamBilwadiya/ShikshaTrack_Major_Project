@@ -20,6 +20,7 @@ import communicationRoutes from './communicationRoutes.js';
 import documentRoutes from './documentRoutes.js';
 import certificateRoutes from './certificateRoutes.js';
 import performanceRoutes from './performanceRoutes.js';
+import systemAdminRoutes from './systemAdminRoutes.js';
 
 const router = Router();
 
@@ -55,6 +56,7 @@ router.use('/communication', communicationRoutes);
 router.use('/documents', documentRoutes);
 router.use('/certificates', certificateRoutes);
 router.use('/performance', performanceRoutes);
+router.use('/admin', systemAdminRoutes);
 
 export default router;
 
