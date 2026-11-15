@@ -61,6 +61,7 @@ export default function DashboardLayout() {
     ? [
         { label: 'Admin Dashboard', path: '/admin/dashboard', icon: LayoutDashboard },
         { label: 'Student Directory', path: '/students', icon: GraduationCap },
+        { label: 'Student Promotion', path: '/students/promotion', icon: GraduationCap },
         { label: 'Class Management', path: '/classes', icon: Building2 },
         { label: 'Faculty Management', path: '/teachers', icon: Users },
         { label: 'Parent & Guardians', path: '/parents/manage', icon: Heart },

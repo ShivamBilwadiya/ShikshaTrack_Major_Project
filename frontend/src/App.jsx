@@ -38,6 +38,7 @@ import CertificateManagement from './pages/CertificateManagement';
 import PublicCertificateVerification from './pages/PublicCertificateVerification';
 import StudentPerformanceAnalytics from './pages/StudentPerformanceAnalytics';
 import SystemAdministration from './pages/SystemAdministration';
+import StudentPromotion from './pages/StudentPromotion';
 
 // Route Guards
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -121,6 +122,14 @@ export default function App() {
 
               {/* Student Management */}
               <Route path="students" element={<StudentList />} />
+              <Route
+                path="students/promotion"
+                element={
+                  <ProtectedRoute allowedRoles={['ADMIN']}>
+                    <StudentPromotion />
+                  </ProtectedRoute>
+                }
+              />
               <Route
                 path="students/new"
                 element={

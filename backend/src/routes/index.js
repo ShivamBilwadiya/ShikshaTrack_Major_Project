@@ -21,6 +21,7 @@ import documentRoutes from './documentRoutes.js';
 import certificateRoutes from './certificateRoutes.js';
 import performanceRoutes from './performanceRoutes.js';
 import systemAdminRoutes from './systemAdminRoutes.js';
+import promotionRoutes from './promotionRoutes.js';
 
 const router = Router();
 
@@ -57,6 +58,8 @@ router.use('/documents', documentRoutes);
 router.use('/certificates', certificateRoutes);
 router.use('/performance', performanceRoutes);
 router.use('/admin', systemAdminRoutes);
+router.use('/academic/promotion', promotionRoutes);
+router.use('/promotion', promotionRoutes);
 
 export default router;
 
