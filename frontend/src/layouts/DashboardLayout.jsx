@@ -33,6 +33,7 @@ import {
   Heart,
   FileBadge,
   ShieldCheck,
+  Archive,
 } from 'lucide-react';
 
 export default function DashboardLayout() {
@@ -77,6 +78,7 @@ export default function DashboardLayout() {
         { label: 'Student Leaves', path: '/leaves', icon: CalendarCheck },
         { label: 'Discipline & Incidents', path: '/incidents', icon: ShieldAlert },
         { label: 'Fee & Billing', path: '/fees', icon: CreditCard },
+        { label: 'Fee Rollover & Archive', path: '/fees/rollover', icon: Archive },
         { label: 'QR ID Cards', path: '/qr-cards', icon: QrCode },
         { label: 'Attendance Reports', path: '/reports', icon: BarChart3 },
         { label: 'Attendance Intelligence', path: '/attendance/analytics', icon: TrendingUp },

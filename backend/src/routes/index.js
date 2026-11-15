@@ -23,6 +23,7 @@ import performanceRoutes from './performanceRoutes.js';
 import systemAdminRoutes from './systemAdminRoutes.js';
 import promotionRoutes from './promotionRoutes.js';
 import transferCertificateRoutes from './transferCertificateRoutes.js';
+import financialRolloverRoutes from './financialRolloverRoutes.js';
 
 const router = Router();
 
@@ -62,6 +63,7 @@ router.use('/admin', systemAdminRoutes);
 router.use('/academic/promotion', promotionRoutes);
 router.use('/promotion', promotionRoutes);
 router.use('/students/tc', transferCertificateRoutes);
+router.use('/fees/rollover', financialRolloverRoutes);
 
 export default router;
 

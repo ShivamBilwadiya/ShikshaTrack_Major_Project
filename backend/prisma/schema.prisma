@@ -68,6 +68,7 @@ model School {
   certificateTemplates CertificateTemplate[]
   issuedCertificates IssuedCertificate[]
   academicInterventions AcademicIntervention[]
+  financialArchives FinancialYearArchive[]
 
   @@map("schools")
 }
@@ -116,6 +117,7 @@ model User {
   assignedInterventions AcademicIntervention[] @relation("InterventionAssignee")
   resolvedInterventions AcademicIntervention[] @relation("InterventionResolver")
   interventionNotes    AcademicInterventionNote[]
+  archivedFinancialYears FinancialYearArchive[] @relation("FinancialArchiver")
 
   @@map("users")
 }
@@ -1129,4 +1131,27 @@ model AcademicInterventionNote {
 
   @@index([interventionId])
   @@map("academic_intervention_notes")
+}
+
+model FinancialYearArchive {
+  id                String   @id @default(uuid())
+  schoolId          String
+  school            School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicYear      String   // e.g. "2026-2027"
+  archivedById      String
+  archivedBy        User     @relation("FinancialArchiver", fields: [archivedById], references: [id], onDelete: Cascade)
+  totalAssessed     Float    @default(0)
+  totalCollected    Float    @default(0)
+  totalPending      Float    @default(0)
+  totalStudents     Int      @default(0)
+  feeStructureCount Int      @default(0)
+  paymentCount      Int      @default(0)
+  summarySnapshot   Json
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([schoolId, academicYear])
+  @@index([schoolId, academicYear])
+  @@map("financial_year_archives")
 }

@@ -40,6 +40,7 @@ import StudentPerformanceAnalytics from './pages/StudentPerformanceAnalytics';
 import SystemAdministration from './pages/SystemAdministration';
 import StudentPromotion from './pages/StudentPromotion';
 import TransferCertificates from './pages/TransferCertificates';
+import AcademicFeeRollover from './pages/AcademicFeeRollover';
 
 // Route Guards
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -164,6 +165,14 @@ export default function App() {
               <Route path="leaves" element={<LeaveManagement />} />
               <Route path="incidents" element={<StudentIncidentManagement />} />
               <Route path="fees" element={<FeeManagement />} />
+              <Route
+                path="fees/rollover"
+                element={
+                  <ProtectedRoute allowedRoles={['ADMIN']}>
+                    <AcademicFeeRollover />
+                  </ProtectedRoute>
+                }
+              />
               <Route path="documents" element={<DocumentManagement />} />
               <Route path="certificates" element={<CertificateManagement />} />
               <Route
