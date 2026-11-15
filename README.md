@@ -221,23 +221,3 @@ Comprehensive academic documentation has been created inside `docs/`:
 
 ---
 
-## 11. Limitations & Future Scope
-
-### Limitations
-- **Camera Quality:** In very low light conditions, low-end device cameras may require 1-2 seconds longer to focus on QR cards. (Addressed by our manual token entry fallback).
-- **Hardware Requirement:** Requires at least one smartphone, tablet, or laptop per teacher to conduct scans.
-
-### Future Scope
-- **SMS / WhatsApp Gateway:** Automated delivery of absence notices to rural guardians in local vernacular languages (Hindi/Rajasthani).
-- **Solar-Powered Hardware Kiosk:** Deployment on an inexpensive Raspberry Pi with an e-ink display for completely off-grid villages.
-- **Govt. Portal Sync:** Bi-directional sync with state education platforms (e.g. Rajasthan Shala Darpan / UDISE+).
-
----
-
-## 12. Team & Academic Credits
-
-- **Subject 1 (DE):** Database Engineering & SQL
-- **Subject 2 (ASD):** Application Software Development (Node.js, Express, Prisma, CLI)
-- **Subject 3 (ISD):** Information Systems Development (React, PWA, Web App)
-- Developed for **Rajkiya Adarsh Vidyalaya, Rampur** &bull; ShikshaTrack Project
-
